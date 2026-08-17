@@ -1,0 +1,292 @@
+// ==================== ENGINE ====================
+function dist(a, b) {
+  return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+}
+
+function normAngle(a) {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a <= -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+function calcWeight(area, thick, mtIdx) {
+  const mt = METAL_TYPES[mtIdx] || METAL_TYPES[0];
+  const ts = Object.keys(mt.densities).map(Number).sort((a, b) => a - b);
+  let d = 7.85e-6;
+  for (const tt of ts) {
+    d = mt.densities[tt];
+    if (tt >= thick) break;
+  }
+  return area * thick * d;
+}
+
+function getMetalDensity(mtIdx, thick) {
+  const mt = METAL_TYPES[mtIdx] || METAL_TYPES[0];
+  const ts = Object.keys(mt.densities).map(Number).sort((a, b) => a - b);
+  let d = 7.85e-6;
+  for (const tt of ts) {
+    d = mt.densities[tt];
+    if (tt >= thick) break;
+  }
+  return d;
+}
+
+/**
+ * Расчёт развёртки профиля
+ * @param {Array} points - массив точек профиля
+ * @param {number} bendRadius - радиус гиба
+ * @param {number} kFactor - K-фактор
+ * @param {number} thickness - толщина
+ * @param {number} width - ширина заготовки
+ * @returns {object|null} результат развёртки или null
+ */
+function unfoldProfile(points, bendRadius, kFactor, thickness, width) {
+  if (points.length < 2) return null;
+
+  // Вычислить сегменты между точками
+  const segs = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const s = points[i], e = points[i + 1];
+    segs.push({
+      start: s, end: e,
+      length: dist(s, e),
+      angle: Math.atan2(e.y - s.y, e.x - s.x)
+    });
+  }
+  if (!segs.length) return null;
+
+  // Радиус нейтральной линии
+  const nr = bendRadius + kFactor * thickness;
+
+  // Найти гибы
+  const bends = [];
+  if (segs.length >= 2) {
+    for (let i = 0; i < segs.length - 1; i++) {
+      let def = normAngle(segs[i + 1].angle - segs[i].angle);
+      const ba = Math.abs(def);
+      // Пропустить почти прямые или почти 180° сегменты
+      if (ba < 5 * Math.PI / 180 || ba > Math.PI - 5 * Math.PI / 180) continue;
+      // Касательное расстояние по внешнему радиусу (как в SolidWorks: R + t)
+      const td = (bendRadius + thickness) * Math.tan(ba / 2);
+      const bl = nr * ba;
+      const cross = Math.cos(segs[i].angle) * Math.sin(segs[i + 1].angle)
+                  - Math.sin(segs[i].angle) * Math.cos(segs[i + 1].angle);
+      bends.push({
+        vertexIndex: i + 1,
+        vertex: points[i + 1],
+        bendAngle: ba,
+        deflection: def,
+        bendAllowance: bl,
+        tangentDistance: td,
+        neutralRadius: nr,
+        isInward: cross > 0
+      });
+    }
+  }
+
+  // Расчёт каймы (180° загиб)
+  function calcHem(h) {
+    if (!h || h <= 0) return 0;
+    const R = bendRadius;
+    return h - R - thickness + (Math.PI / 2) * (R + kFactor * thickness);
+  }
+
+  // Build a map of hems by segment index
+  const hemMap = new Map();
+  (S.hems || []).forEach(h => {
+    let si = h.segIndex;
+    // Last segment hem → place AFTER last segment (at the edge of the contour)
+    if (si === segs.length - 1) si = segs.length;
+    if (si >= 0 && si <= segs.length && h.height > 0) {
+      hemMap.set(si, h);
+    }
+  });
+
+  // Построить развёртку
+  const elements = [];
+  const bendLinePositions = [];
+  const hemBendLinePositions = [];
+  let cx = 0;
+  const bendMap = new Map();
+  bends.forEach(b => bendMap.set(b.vertexIndex, b));
+
+  for (let i = 0; i < segs.length; i++) {
+    // Hem before this segment (at its start point)
+    const hemBefore = hemMap.get(i);
+    if (hemBefore) {
+      const hemAdd = calcHem(hemBefore.height);
+      if (hemAdd > 0) {
+        elements.push({ type: 'hem', edge: hemBefore.side || 'left', segIndex: i, height: hemBefore.height, length: hemAdd, startX: cx, endX: cx + hemAdd });
+        cx += hemAdd;
+        hemBendLinePositions.push(cx);
+      }
+    }
+
+    let sl = segs[i].length;
+    const sb = bendMap.get(i);
+    if (sb) sl -= sb.tangentDistance;
+    const eb = bendMap.get(i + 1);
+    if (eb) sl -= eb.tangentDistance;
+    sl = Math.max(0, sl);
+    elements.push({ type: 'straight', length: sl, startX: cx, endX: cx + sl });
+    cx += sl;
+    if (eb) {
+      elements.push({
+        type: 'bend',
+        angle: eb.bendAngle,
+        bendAllowance: eb.bendAllowance,
+        startX: cx,
+        endX: cx + eb.bendAllowance,
+        direction: eb.isInward ? 1 : -1
+      });
+      bendLinePositions.push(cx);
+      cx += eb.bendAllowance;
+    }
+  }
+
+  // Hem after last segment (bend line at the START of the hem fold to avoid overlapping with outline edge)
+  const hemAfterLast = hemMap.get(segs.length);
+  if (hemAfterLast) {
+    const hemAdd = calcHem(hemAfterLast.height);
+    if (hemAdd > 0) {
+      hemBendLinePositions.push(cx);
+      elements.push({ type: 'hem', edge: hemAfterLast.side || 'left', segIndex: segs.length, height: hemAfterLast.height, length: hemAdd, startX: cx, endX: cx + hemAdd });
+      cx += hemAdd;
+    }
+  }
+
+  return {
+    elements,
+    totalLength: cx,
+    width,
+    bendInfos: bends,
+    bendLinePositions,
+    hemBendLinePositions
+  };
+}
+
+/**
+ * Генерация DXF (R12 / AC1009 — максимальная совместимость)
+ */
+function generateDXF(res, br, kf, th, mtName, opts) {
+  const L = res.totalLength, W = res.width;
+
+  function n(v) {
+    return parseFloat(Number(v).toFixed(6)).toString();
+  }
+
+  const dxf = [];
+
+  // ══ HEADER ══
+  dxf.push('0', 'SECTION', '2', 'HEADER');
+  dxf.push('9', '$ACADVER', '1', 'AC1009');
+  dxf.push('9', '$INSUNITS', '70', '4');
+  dxf.push('9', '$HANDSEED', '5', 'FFFF');
+  dxf.push('0', 'ENDSEC');
+
+  // ══ TABLES ══
+  dxf.push('0', 'SECTION', '2', 'TABLES');
+
+  // LTYPE
+  dxf.push('0', 'TABLE', '2', 'LTYPE', '70', '2');
+  dxf.push('0', 'LTYPE', '2', 'CONTINUOUS', '70', '0', '3', 'Solid line', '72', '65', '73', '0', '40', '0');
+  dxf.push('0', 'LTYPE', '2', 'DASHED', '70', '0', '3', 'Dashed line __ __ __ __ __ __ __ __ __ __', '72', '65', '73', '0', '40', '5');
+  dxf.push('0', 'ENDTAB');
+
+  // LAYER
+  dxf.push('0', 'TABLE', '2', 'LAYER', '70', '2');
+  dxf.push('0', 'LAYER', '2', 'OUTLINE', '70', '0', '62', '7', '6', 'CONTINUOUS');
+  dxf.push('0', 'LAYER', '2', 'BEND', '70', '0', '62', '1', '6', 'DASHED');
+  dxf.push('0', 'ENDTAB');
+
+  // STYLE
+  dxf.push('0', 'TABLE', '2', 'STYLE', '70', '1');
+  dxf.push('0', 'STYLE', '2', 'STANDARD', '70', '0', '40', '0', '41', '1', '50', '0', '71', '0', '42', '5', '3', 'txt', '4', '');
+  dxf.push('0', 'ENDTAB');
+
+  dxf.push('0', 'ENDSEC');
+
+  // ══ ENTITIES ══
+  dxf.push('0', 'SECTION', '2', 'ENTITIES');
+
+  // Контур заготовки (OUTLINE)
+  dxf.push(
+    '0', 'LINE', '8', 'OUTLINE',
+    '10', n(0), '20', n(0), '30', '0',
+    '11', n(L), '21', n(0), '31', '0'
+  );
+  dxf.push(
+    '0', 'LINE', '8', 'OUTLINE',
+    '10', n(L), '20', n(0), '30', '0',
+    '11', n(L), '21', n(W), '31', '0'
+  );
+  dxf.push(
+    '0', 'LINE', '8', 'OUTLINE',
+    '10', n(L), '20', n(W), '30', '0',
+    '11', n(0), '21', n(W), '31', '0'
+  );
+  dxf.push(
+    '0', 'LINE', '8', 'OUTLINE',
+    '10', n(0), '20', n(W), '30', '0',
+    '11', n(0), '21', n(0), '31', '0'
+  );
+
+  // Линии гиба (включая кайму)
+  res.bendLinePositions.forEach(x => {
+    dxf.push(
+      '0', 'LINE', '8', 'BEND',
+      '10', n(x), '20', n(0), '30', '0',
+      '11', n(x), '21', n(W), '31', '0'
+    );
+  });
+  res.hemBendLinePositions.forEach(x => {
+    dxf.push(
+      '0', 'LINE', '8', 'BEND',
+      '10', n(x), '20', n(0), '30', '0',
+      '11', n(x), '21', n(W), '31', '0'
+    );
+  });
+
+  dxf.push('0', 'ENDSEC', '0', 'EOF');
+
+  return dxf.join('\n');
+}
+
+/**
+ * Генерация SVG
+ */
+function generateSVG(res, br, kf, th, mtName) {
+  const L = res.totalLength, W = res.width;
+  const pad = 10;
+  const svgW = L + pad * 2 + 80, svgH = W + pad * 2 + 50;
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
+  s += '<rect x="' + pad + '" y="' + pad + '" width="' + L + '" height="' + W + '" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>';
+
+  res.elements.forEach(el => {
+    if (el.type === 'straight') {
+      s += '<rect x="' + (pad + el.startX) + '" y="' + pad + '" width="' + (el.endX - el.startX) + '" height="' + W + '" fill="#dcfce7" stroke="#16a34a33" stroke-width="0.5"/>';
+      if (el.length > 5) {
+        const mx = (el.startX + el.endX) / 2;
+        s += '<text x="' + (pad + mx) + '" y="' + (pad + W / 2) + '" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="bold" fill="#15803d">' + el.length.toFixed(1) + '</text>';
+      }
+    } else {
+      s += '<rect x="' + (pad + el.startX) + '" y="' + pad + '" width="' + (el.endX - el.startX) + '" height="' + W + '" fill="#fed7aa" stroke="#ea580c33" stroke-width="0.5"/>';
+      const mx = (el.startX + el.endX) / 2;
+      s += '<text x="' + (pad + mx) + '" y="' + (pad + W / 2) + '" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#c2410c">' + (el.angle * 180 / Math.PI).toFixed(0) + '°</text>';
+    }
+  });
+
+  res.bendLinePositions.forEach((x, i) => {
+    s += '<line x1="' + (pad + x) + '" y1="' + pad + '" x2="' + (pad + x) + '" y2="' + (pad + W) + '" stroke="#ea580c" stroke-width="1.5" stroke-dasharray="4 3"/>';
+    s += '<circle cx="' + (pad + x) + '" cy="' + (pad + 20) + '" r="8" fill="#f97316" stroke="#fff" stroke-width="1.5"/>';
+    s += '<text x="' + (pad + x) + '" y="' + (pad + 20) + '" text-anchor="middle" dominant-baseline="central" font-size="9" font-weight="bold" fill="#fff">' + (i + 1) + '</text>';
+  });
+
+  const dy = pad + W + 15;
+  s += '<line x1="' + pad + '" y1="' + dy + '" x2="' + (pad + L) + '" y2="' + dy + '" stroke="#737373" stroke-width="0.8"/>';
+  s += '<line x1="' + pad + '" y1="' + (dy - 4) + '" x2="' + pad + '" y2="' + (dy + 4) + '" stroke="#737373" stroke-width="0.8"/>';
+  s += '<line x1="' + (pad + L) + '" y1="' + (dy - 4) + '" x2="' + (pad + L) + '" y2="' + (dy + 4) + '" stroke="#737373" stroke-width="0.8"/>';
+  s += '<text x="' + (pad + L / 2) + '" y="' + (dy + 14) + '" text-anchor="middle" font-size="10" font-family="monospace" fill="#525252">' + L.toFixed(1) + ' mm</text>';
+  s += '<text x="' + pad + '" y="' + (dy + 30) + '" font-size="8" fill="#a3a3a3">Metal: ' + mtName + ' | T: ' + th + ' mm | K: ' + kf + ' | R: ' + br + ' mm</text>';
+  return s + '</svg>';
+}

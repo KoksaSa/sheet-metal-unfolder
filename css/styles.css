@@ -1,0 +1,134 @@
+/* ==================== BASE ==================== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+}
+
+/* ==================== ANIMATIONS ==================== */
+@keyframes borderPulse {
+  0%, 100% { border-color: rgba(74, 222, 128, .8); box-shadow: 0 0 4px rgba(74, 222, 128, .3); }
+  50% { border-color: rgba(34, 197, 94, 1); box-shadow: 0 0 8px rgba(34, 197, 94, .5); }
+}
+@keyframes sparkle {
+  0%, 100% { opacity: .3; transform: scale(.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes gradientPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .7; }
+}
+
+/* ==================== PRINT ==================== */
+.no-print { }
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  canvas { max-width: 100% !important; }
+  main > aside:last-child { display: flex !important; width: 100% !important; }
+}
+
+canvas { transition: none !important; }
+
+/* ==================== SCROLLBAR ==================== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(120, 120, 120, .3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(80, 80, 80, .5); }
+
+/* ==================== UTILITIES ==================== */
+.line-clamp-2 {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* ==================== RANGE INPUT ==================== */
+input[type=range] {
+  -webkit-appearance: none; height: 6px; border-radius: 3px; background: #d1d5db; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+  background: #16a34a; cursor: pointer; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+}
+.dark input[type=range] { background: #374151; }
+.dark input[type=range]::-webkit-slider-thumb {
+  background: #22c55e; border-color: #1a1a2e;
+}
+
+/* ==================== TOAST ==================== */
+.toast {
+  position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+  padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .15); pointer-events: auto;
+  animation: fadeInUp .3s ease;
+}
+.toast-success { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.toast-error { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==================== CONTEXT MENU ==================== */
+.context-menu {
+  position: fixed; z-index: 100; min-width: 160px;
+  background: var(--card, #fff); border: 1px solid var(--border, #e5e5e5);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .12); padding: 4px; overflow: hidden;
+}
+.context-menu button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px;
+  border: none; background: none; font-size: 12px; color: var(--fg, #171717);
+  cursor: pointer; border-radius: 4px; text-align: left;
+}
+.context-menu button:hover { background: var(--hover, #f0fdf4); }
+
+/* ==================== DIALOG ==================== */
+.dialog-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .5); z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+}
+.dialog-box {
+  background: var(--card, #fff); border: 1px solid var(--border, #e5e5e5);
+  border-radius: 12px; padding: 20px; max-width: 440px; width: 90%; max-height: 80vh;
+  overflow-y: auto; box-shadow: 0 20px 60px rgba(0, 0, 0, .2);
+}
+.dialog-box-wide { max-width: 900px; }
+
+/* ==================== SWITCH TOGGLE ==================== */
+.switch {
+  position: relative; width: 36px; height: 20px; background: #d1d5db;
+  border-radius: 10px; cursor: pointer; transition: background .2s;
+}
+.switch.active { background: #16a34a; }
+.switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; background: #fff; border-radius: 50%;
+  transition: transform .2s; box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+}
+.switch.active::after { transform: translateX(16px); }
+.dark .switch { background: #4b5563; }
+.dark .switch.active { background: #22c55e; }
+
+/* ==================== 3D VIEW ==================== */
+#view3d-canvas {
+  cursor: grab;
+  image-rendering: auto;
+  background: #f5f5f5;
+  display: block;
+}
+.dark #view3d-canvas {
+  background: #1a1a2e;
+}
+#view3d-canvas:active { cursor: grabbing; }
+#view3d-container {
+  position: relative;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+.dark #view3d-container {
+  background: #1a1a2e;
+}

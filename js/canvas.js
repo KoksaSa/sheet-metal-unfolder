@@ -1,0 +1,1764 @@
+ // ==================== HIT AREAS ====================
+  // Массив кликабельных областей для сегментов и точек
+  S._hitAreas = [];
+
+  // ==================== DRAWING CANVAS ====================
+const drawCanvas = document.getElementById('draw-canvas');
+const drawCtx = drawCanvas.getContext('2d');
+let canvasW = 400, canvasH = 300;
+let isPanning = false, panStart = null, dragPtIdx = null;
+let measureStart = null, measureEnd = null, measureStep = 0;
+let animFrame = 0;
+
+function w2c(wx, wy) {
+  return { cx: wx * S.viewport.scale + S.viewport.offsetX, cy: -wy * S.viewport.scale + S.viewport.offsetY };
+}
+function c2w(cx, cy) {
+  return { x: (cx - S.viewport.offsetX) / S.viewport.scale, y: -(cy - S.viewport.offsetY) / S.viewport.scale };
+}
+
+function resizeDrawCanvas() {
+  const cont = document.getElementById('canvas-container');
+  if (!cont) return;
+  const r = cont.getBoundingClientRect();
+  canvasW = Math.floor(r.width);
+  canvasH = Math.floor(r.height);
+  const dpr = window.devicePixelRatio || 1;
+  drawCanvas.width = canvasW * dpr;
+  drawCanvas.height = canvasH * dpr;
+  drawCanvas.style.width = canvasW + 'px';
+  drawCanvas.style.height = canvasH + 'px';
+}
+
+// ==================== HEM HOOK 2D ====================
+function findNearSegment(cx, cy, threshold) {
+  const thresh = threshold || 10;
+  let bestDist = Infinity, bestIdx = -1;
+  for (let i = 0; i < S.points.length - 1; i++) {
+    const a = w2c(S.points[i].x, S.points[i].y);
+    const b = w2c(S.points[i + 1].x, S.points[i + 1].y);
+    const dx = b.cx - a.cx, dy = b.cy - a.cy;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) continue;
+    let t = ((cx - a.cx) * dx + (cy - a.cy) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = a.cx + t * dx, py = a.cy + t * dy;
+    const d = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2);
+    if (d < bestDist && d < thresh) {
+      bestDist = d; bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+function drawHemHooks2D() {
+  if (S.points.length < 2 || !S.hems || S.hems.length === 0) return;
+  S.hems.forEach(hem => {
+    const si = hem.segIndex;
+    const numSegs = S.points.length - 1;
+    if (si < 0 || si > numSegs) return;
+    let pt, neighbor;
+    if (si >= numSegs - 1) {
+      // Hem at the end point of the last segment (edge of contour)
+      pt = S.points[S.points.length - 1];
+      neighbor = S.points[S.points.length - 2];
+    } else {
+      pt = S.points[si];
+      neighbor = S.points[si + 1];
+    }
+    const isLeft = hem.side !== 'right';
+    drawSingleHemHook(pt, neighbor, hem.height, isLeft);
+  });
+}
+
+function drawSingleHemHook(pt, neighbor, hemHeight, isLeft) {
+  const segAngle = Math.atan2(neighbor.y - pt.y, neighbor.x - pt.x);
+  // Перпендикуляр вниз (внутрь материала)
+  const perpAngle = isLeft ? (segAngle - Math.PI / 2) : (segAngle + Math.PI / 2);
+
+  const br = S.metal.bendRadius;
+
+  // Геометрия каймы:
+  // pt → h1: перпендикуляр вниз на радиус гиба
+  // h1 → h2: параллельно ребру (вперёд) на указанную длину
+  const h1w = {
+    x: pt.x + Math.cos(perpAngle) * br,
+    y: pt.y + Math.sin(perpAngle) * br
+  };
+  const h2w = {
+    x: h1w.x + Math.cos(segAngle) * hemHeight,
+    y: h1w.y + Math.sin(segAngle) * hemHeight
+  };
+
+  const c0 = w2c(pt.x, pt.y);
+  const c1 = w2c(h1w.x, h1w.y);
+  const c2 = w2c(h2w.x, h2w.y);
+
+  const isDark = S.isDark;
+  const color = isLeft ? '#3b82f6' : '#8b5cf6';
+
+  drawCtx.save();
+
+  // L-образный контур каймы
+  drawCtx.strokeStyle = color;
+  drawCtx.lineWidth = 1.5;
+  drawCtx.lineCap = 'round';
+  drawCtx.lineJoin = 'round';
+  drawCtx.beginPath();
+  drawCtx.moveTo(c0.cx, c0.cy);
+  drawCtx.lineTo(c1.cx, c1.cy);
+  drawCtx.lineTo(c2.cx, c2.cy);
+  drawCtx.stroke();
+
+  // Точка гиба
+  drawCtx.beginPath();
+  drawCtx.arc(c1.cx, c1.cy, 3, 0, Math.PI * 2);
+  drawCtx.fillStyle = color;
+  drawCtx.fill();
+
+  // Подпись — вдоль параллельной части (h1→h2)
+  drawCtx.font = 'bold 8px sans-serif';
+  drawCtx.textAlign = 'center';
+  drawCtx.textBaseline = 'middle';
+  const label = 'H' + hemHeight.toFixed(0);
+  const lx = (c1.cx + c2.cx) / 2;
+  const ly = (c1.cy + c2.cy) / 2;
+  // Смещение подписи от линии
+  const offset = isLeft ? -12 : 12;
+  const segPerpX = -Math.sin(segAngle) * offset;
+  const segPerpY = Math.cos(segAngle) * offset;
+  drawCtx.fillStyle = color;
+  drawCtx.fillText(label, lx + segPerpX, ly + segPerpY);
+
+  drawCtx.restore();
+}
+
+
+function drawDrawCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = canvasW, h = canvasH;
+  const isDark = S.isDark;
+
+  // Сброс hit areas
+  S._hitAreas = [];
+
+  // Clear
+  drawCtx.fillStyle = isDark ? '#1a1a2e' : '#fafafa';
+  drawCtx.fillRect(0, 0, w, h);
+
+  // Spotlight when empty
+  if (S.points.length === 0) {
+    const grd = drawCtx.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.max(w, h) * .6);
+    grd.addColorStop(0, isDark ? 'rgba(34,197,94,.04)' : 'rgba(22,163,74,.05)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    drawCtx.fillStyle = grd;
+    drawCtx.fillRect(0, 0, w, h);
+    drawCtx.fillStyle = isDark ? 'rgba(163,163,184,.3)' : 'rgba(82,82,82,.25)';
+    drawCtx.font = 'bold 14px sans-serif';
+    drawCtx.textAlign = 'center';
+    drawCtx.textBaseline = 'middle';
+    drawCtx.fillText(t('drawProfile'), w / 2, h / 2 - 10);
+    drawCtx.font = '11px sans-serif';
+    drawCtx.fillText(t('drawProfileHint'), w / 2, h / 2 + 12);
+  }
+
+  // World bounds
+  const tl = c2w(0, 0), br = c2w(w, h);
+  const wMinX = Math.min(tl.x, br.x), wMaxX = Math.max(tl.x, br.x);
+  const wMinY = Math.min(tl.y, br.y), wMaxY = Math.max(tl.y, br.y);
+  const gs = S.gridSize;
+
+  // Minor grid
+  drawCtx.strokeStyle = isDark ? '#2a2a3e' : '#e5e5e5';
+  drawCtx.lineWidth = .5;
+  drawCtx.beginPath();
+  for (let gx = Math.floor(wMinX / gs) * gs; gx <= Math.ceil(wMaxX / gs) * gs; gx += gs) {
+    const { cx } = w2c(gx, 0);
+    drawCtx.moveTo(cx, 0);
+    drawCtx.lineTo(cx, h);
+  }
+  for (let gy = Math.floor(wMinY / gs) * gs; gy <= Math.ceil(wMaxY / gs) * gs; gy += gs) {
+    const { cy } = w2c(0, gy);
+    drawCtx.moveTo(0, cy);
+    drawCtx.lineTo(w, cy);
+  }
+  drawCtx.stroke();
+
+  // Major grid
+  const mg = gs * 5;
+  drawCtx.strokeStyle = isDark ? '#3a3a4e' : '#d4d4d4';
+  drawCtx.lineWidth = 1;
+  drawCtx.beginPath();
+  for (let gx = Math.floor(wMinX / mg) * mg; gx <= Math.ceil(wMaxX / mg) * mg; gx += mg) {
+    const { cx } = w2c(gx, 0);
+    drawCtx.moveTo(cx, 0);
+    drawCtx.lineTo(cx, h);
+  }
+  for (let gy = Math.floor(wMinY / mg) * mg; gy <= Math.ceil(wMaxY / mg) * mg; gy += mg) {
+    const { cy } = w2c(0, gy);
+    drawCtx.moveTo(0, cy);
+    drawCtx.lineTo(w, cy);
+  }
+  drawCtx.stroke();
+
+  // Origin
+  const o = w2c(0, 0);
+  drawCtx.strokeStyle = isDark ? '#22c55e88' : '#16a34a66';
+  drawCtx.lineWidth = 1.5;
+  drawCtx.beginPath();
+  drawCtx.moveTo(o.cx - 8, o.cy); drawCtx.lineTo(o.cx + 8, o.cy);
+  drawCtx.moveTo(o.cx, o.cy - 8); drawCtx.lineTo(o.cx, o.cy + 8);
+  drawCtx.stroke();
+  drawCtx.beginPath();
+  drawCtx.arc(o.cx, o.cy, 3, 0, Math.PI * 2);
+  drawCtx.fillStyle = isDark ? '#22c55e44' : '#16a34a33';
+  drawCtx.fill();
+  drawCtx.strokeStyle = isDark ? '#22c55e88' : '#16a34a66';
+  drawCtx.lineWidth = 1;
+  drawCtx.stroke();
+
+  // Axes
+  drawCtx.strokeStyle = isDark ? '#555570' : '#a3a3a3';
+  drawCtx.lineWidth = 1.5;
+  drawCtx.beginPath();
+  drawCtx.moveTo(0, o.cy); drawCtx.lineTo(w, o.cy);
+  drawCtx.moveTo(o.cx, 0); drawCtx.lineTo(o.cx, h);
+  drawCtx.stroke();
+
+  // Axis labels
+  drawCtx.fillStyle = isDark ? '#8888aa' : '#737373';
+  drawCtx.font = '11px sans-serif';
+  drawCtx.textAlign = 'right'; drawCtx.textBaseline = 'top';
+  drawCtx.fillText('X', w - 4, o.cy + 4);
+  drawCtx.textAlign = 'left'; drawCtx.textBaseline = 'bottom';
+  drawCtx.fillText('Y', o.cx + 4, 14);
+  drawCtx.textAlign = 'right'; drawCtx.textBaseline = 'top';
+  drawCtx.font = '9px sans-serif';
+  drawCtx.fillText('0', o.cx - 4, o.cy + 2);
+
+  // Grid labels
+  drawCtx.fillStyle = isDark ? '#555570' : '#a3a3a3';
+  drawCtx.font = '9px sans-serif';
+  drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
+  for (let gx = Math.floor(wMinX / mg) * mg; gx <= Math.ceil(wMaxX / mg) * mg; gx += mg) {
+    if (gx === 0) continue;
+    const { cx } = w2c(gx, 0);
+    if (cx > 25 && cx < w - 25) drawCtx.fillText(String(gx), cx, o.cy + 2);
+  }
+  drawCtx.textAlign = 'right'; drawCtx.textBaseline = 'middle';
+  for (let gy = Math.floor(wMinY / mg) * mg; gy <= Math.ceil(wMaxY / mg) * mg; gy += mg) {
+    if (gy === 0) continue;
+    const { cy } = w2c(0, gy);
+    if (cy > 15 && cy < h - 10) drawCtx.fillText(String(gy), o.cx - 4, cy);
+  }
+
+  // Axis labels along edges
+  if (S.showAxisLabels) {
+    const pad = 25;
+    drawCtx.fillStyle = isDark ? '#6b6b8a' : '#9ca3af';
+    drawCtx.font = '9px monospace';
+    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
+    const lsx = gs * Math.max(1, Math.ceil(30 / (gs * S.viewport.scale)));
+    for (let gx = Math.floor(wMinX / lsx) * lsx; gx <= Math.ceil(wMaxX / lsx) * lsx; gx += lsx) {
+      const { cx } = w2c(gx, 0);
+      if (cx > pad && cx < w - pad) drawCtx.fillText(gx % 1 === 0 ? String(gx) : gx.toFixed(1), cx, h - pad + 6);
+    }
+    drawCtx.textAlign = 'right'; drawCtx.textBaseline = 'middle';
+    for (let gy = Math.floor(wMinY / lsx) * lsx; gy <= Math.ceil(wMaxY / lsx) * lsx; gy += lsx) {
+      const { cy } = w2c(0, gy);
+      if (cy > 12 && cy < h - pad) drawCtx.fillText(gy % 1 === 0 ? String(gy) : gy.toFixed(1), pad - 4, cy);
+    }
+  }
+
+  // Profile lines
+  if (S.points.length >= 2) {
+    // Glow
+    drawCtx.save();
+    drawCtx.strokeStyle = isDark ? '#22c55e22' : '#16a34a22';
+    drawCtx.lineWidth = 8;
+    drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+    drawCtx.beginPath();
+    const gf = w2c(S.points[0].x, S.points[0].y);
+    drawCtx.moveTo(gf.cx, gf.cy);
+    for (let i = 1; i < S.points.length; i++) {
+      const p = w2c(S.points[i].x, S.points[i].y);
+      drawCtx.lineTo(p.cx, p.cy);
+    }
+    drawCtx.stroke();
+    drawCtx.restore();
+
+    // Main line
+    drawCtx.strokeStyle = isDark ? '#22c55e' : '#16a34a';
+    drawCtx.lineWidth = 2.5;
+    drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+    drawCtx.beginPath();
+    const f = w2c(S.points[0].x, S.points[0].y);
+    drawCtx.moveTo(f.cx, f.cy);
+    for (let i = 1; i < S.points.length; i++) {
+      const p = w2c(S.points[i].x, S.points[i].y);
+      drawCtx.lineTo(p.cx, p.cy);
+    }
+    drawCtx.stroke();
+
+    // ==================== DIMENSION LABELS WITH SMART PLACEMENT ====================
+    if (S.showDimensions) {
+      S._hitAreas = [];
+
+      // Вспомогательные функции для умного размещения подписей
+      function rectsOverlap(a, b, pad) {
+        const p = pad || 3;
+        const ox = Math.min(a.x + a.w / 2, b.x + b.w / 2) - Math.max(a.x - a.w / 2, b.x - b.w / 2);
+        const oy = Math.min(a.y + a.h / 2, b.y + b.h / 2) - Math.max(a.y - a.h / 2, b.y - b.h / 2);
+        return ox > p && oy > p;
+      }
+
+      // Генерация кандидатов вокруг базовой точки
+      // prefX/prefY — предпочтительное направление, offsets — дистанции
+      function genCandidates(bx, by, prefX, prefY, offsets, extraDirs) {
+        const cands = [];
+        const baseA = Math.atan2(prefY, prefX);
+        // Основные направления — веер вокруг предпочтительного
+        const dirs = [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05, Math.PI];
+        (extraDirs || []).forEach(ed => dirs.push(ed));
+        for (const off of offsets) {
+          for (const da of dirs) {
+            const a = baseA + da;
+            cands.push({
+              x: bx + Math.cos(a) * off,
+              y: by + Math.sin(a) * off,
+              rank: Math.abs(da) * 20 + off * 0.5
+            });
+          }
+        }
+        cands.sort((x, y) => x.rank - y.rank);
+        return cands;
+      }
+
+      const placed = [];
+      const dimLabels = [];
+
+      // 1. Подписи длин сегментов
+      if (S.points.length >= 2) {
+        drawCtx.font = '10px monospace';
+        for (let i = 0; i < S.points.length - 1; i++) {
+          const sl = dist(S.points[i], S.points[i + 1]);
+          const mx = (S.points[i].x + S.points[i + 1].x) / 2;
+          const my = (S.points[i].y + S.points[i + 1].y) / 2;
+          const mc = w2c(mx, my);
+          const a = Math.atan2(S.points[i + 1].y - S.points[i].y, S.points[i + 1].x - S.points[i].x);
+          // Нормаль к сегменту (основная сторона)
+          const nX = -Math.sin(a), nY = Math.cos(a);
+          // Направление вдоль сегмента (экранное)
+          const aX = Math.cos(a), aY = -Math.sin(a);
+          const text = sl.toFixed(1);
+          const tw = drawCtx.measureText(text).width + 8;
+
+          // Идеальная позиция
+          const ideal = { x: mc.cx + nX * 14, y: mc.cy + nY * 14 };
+
+          // Кандидаты: обе стороны нормали, разные дистанции, сдвиги вдоль сегмента
+          const cands = [];
+          const dists = [14, 26, 38, 52];
+          const sides = [1, -1];
+          const shifts = [0, -28, 28];
+          for (const side of sides) {
+            for (const dist of dists) {
+              for (const sh of shifts) {
+                cands.push({
+                  x: mc.cx + nX * dist * side + aX * sh,
+                  y: mc.cy + nY * dist * side + aY * sh,
+                  rank: dist * 3 + Math.abs(sh)
+                });
+              }
+            }
+          }
+          cands.sort((x, y) => x.rank - y.rank);
+
+          let chosen = null;
+          for (const c of cands) {
+            if (c.x < 8 || c.x > w - 8 || c.y < 8 || c.y > h - 8) continue;
+            const cand = { type: 'length', index: i, text, x: c.x, y: c.y, w: tw, h: 14, idealX: ideal.x, idealY: ideal.y };
+            if (!placed.some(p => rectsOverlap(p, cand))) { chosen = cand; break; }
+          }
+          if (!chosen) chosen = { type: 'length', index: i, text, x: ideal.x, y: ideal.y, w: tw, h: 14, idealX: ideal.x, idealY: ideal.y };
+          placed.push(chosen);
+          dimLabels.push(chosen);
+        }
+      }
+
+      // 2. Дуги углов + подписи углов
+      for (let i = 1; i < S.points.length - 1; i++) {
+        const prev = S.points[i - 1], curr = S.points[i], next = S.points[i + 1];
+        const aIn = Math.atan2(curr.y - prev.y, curr.x - prev.x);
+        const aOut = Math.atan2(next.y - curr.y, next.x - curr.x);
+        let def = aOut - aIn;
+        while (def > Math.PI) def -= 2 * Math.PI;
+        while (def <= -Math.PI) def += 2 * Math.PI;
+        const ba = Math.abs(def);
+        if (ba < 5 * Math.PI / 180 || ba > Math.PI - 5 * Math.PI / 180) continue;
+        const p = w2c(curr.x, curr.y);
+        const ar = 18;
+        drawCtx.beginPath();
+        drawCtx.arc(p.cx, p.cy, ar, -aIn, -aOut, def > 0);
+        drawCtx.strokeStyle = isDark ? '#fbbf24' : '#f59e0b';
+        drawCtx.lineWidth = 1.5;
+        drawCtx.stroke();
+        const ccw = def > 0;
+        const sweep = ccw
+          ? ((-aIn - (-aOut)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
+          : ((-aOut - (-aIn)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+        const mid = ccw ? -aIn - sweep / 2 : -aIn + sweep / 2;
+        drawCtx.font = 'bold 9px sans-serif';
+        const angleText = (ba * 180 / Math.PI).toFixed(0) + '°';
+        const atw = drawCtx.measureText(angleText).width + 8;
+
+        // Кандидаты вокруг вершины
+        const cands = [];
+        const dists2 = [28, 38, 50, 64];
+        for (const dist of dists2) {
+          for (let k = 0; k < 8; k++) {
+            const ang = mid + k * Math.PI / 4;
+            cands.push({
+              x: p.cx + Math.cos(ang) * dist,
+              y: p.cy + Math.sin(ang) * dist,
+              rank: Math.abs(normAngle(ang - mid)) * 40 + dist
+            });
+          }
+        }
+        cands.sort((x, y) => x.rank - y.rank);
+
+        let chosen = null;
+        for (const c of cands) {
+          if (c.x < 8 || c.x > w - 8 || c.y < 8 || c.y > h - 8) continue;
+          const cand = { type: 'angle', text: angleText, x: c.x, y: c.y, w: atw, h: 14, pcx: p.cx, pcy: p.cy, baseR: 28 };
+          if (!placed.some(q => rectsOverlap(q, cand))) { chosen = cand; break; }
+        }
+        if (!chosen) {
+          chosen = { type: 'angle', text: angleText, x: p.cx + Math.cos(mid) * 28, y: p.cy + Math.sin(mid) * 28, w: atw, h: 14, pcx: p.cx, pcy: p.cy, baseR: 28 };
+        }
+        placed.push(chosen);
+        dimLabels.push(chosen);
+      }
+
+      // 3. Рисование с фоном-плашкой для читаемости
+      dimLabels.forEach(label => {
+        drawCtx.save();
+        const bw = label.w + 4, bh = label.h + 2;
+        // Полупрозрачная плашка под текстом
+        drawCtx.fillStyle = isDark ? 'rgba(26,26,46,0.82)' : 'rgba(255,255,255,0.88)';
+        drawCtx.beginPath();
+        drawCtx.roundRect(label.x - bw / 2, label.y - bh / 2, bw, bh, 3);
+        drawCtx.fill();
+
+        if (label.type === 'length') {
+          // Выноска к середине сегмента, если подпись уехала от идеальной позиции
+          const distFromIdeal = Math.sqrt((label.x - label.idealX) ** 2 + (label.y - label.idealY) ** 2);
+          if (distFromIdeal > 20) {
+            drawCtx.strokeStyle = isDark ? '#a3a3b866' : '#73737355';
+            drawCtx.lineWidth = 0.7;
+            drawCtx.setLineDash([2, 3]);
+            drawCtx.beginPath();
+            drawCtx.moveTo(label.idealX, label.idealY);
+            drawCtx.lineTo(label.x, label.y);
+            drawCtx.stroke();
+            drawCtx.setLineDash([]);
+          }
+          drawCtx.fillStyle = isDark ? '#a3a3b8' : '#525252';
+          drawCtx.font = '10px monospace';
+          drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+          drawCtx.fillText(label.text, label.x, label.y);
+          S._hitAreas.push({
+            type: 'segment', index: label.index,
+            x: label.x - bw / 2, y: label.y - bh / 2, w: bw, h: bh
+          });
+        } else {
+          // Выноска от дуги
+          const distFromBase = Math.sqrt((label.x - label.pcx) ** 2 + (label.y - label.pcy) ** 2);
+          if (distFromBase > label.baseR + 6) {
+            const ang = Math.atan2(label.y - label.pcy, label.x - label.pcx);
+            drawCtx.strokeStyle = isDark ? '#fbbf2466' : '#d9770666';
+            drawCtx.lineWidth = 0.7;
+            drawCtx.setLineDash([2, 2]);
+            drawCtx.beginPath();
+            drawCtx.moveTo(label.pcx + Math.cos(ang) * label.baseR, label.pcy + Math.sin(ang) * label.baseR);
+            drawCtx.lineTo(label.x - Math.cos(ang) * (label.w / 2 + 2), label.y - Math.sin(ang) * (label.h / 2 + 2));
+            drawCtx.stroke();
+            drawCtx.setLineDash([]);
+          }
+          drawCtx.fillStyle = isDark ? '#fbbf24' : '#d97706';
+          drawCtx.font = 'bold 9px sans-serif';
+          drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+          drawCtx.fillText(label.text, label.x, label.y);
+        }
+        drawCtx.restore();
+      });
+    }
+  }
+
+  // Points
+  S._hitAreas = S._hitAreas || [];
+  // Build bend number map: vertexIndex -> bendNumber (1-indexed)
+  const bendNumMap = {};
+  if (S.unfoldResult && S.unfoldResult.bendInfos) {
+    S.unfoldResult.bendInfos.forEach((b, idx) => { bendNumMap[b.vertexIndex] = idx + 1; });
+  }
+  S.points.forEach((pt, i) => {
+    const { cx, cy } = w2c(pt.x, pt.y);
+    const hov = S.hoveredPt === i;
+    const isF = i === 0, isL = i === S.points.length - 1;
+    if (hov) {
+      drawCtx.beginPath();
+      drawCtx.arc(cx, cy, 14, 0, Math.PI * 2);
+      drawCtx.fillStyle = isF ? '#22c55e15' : '#22c55e15';
+      drawCtx.fill();
+    }
+    drawCtx.beginPath();
+    drawCtx.arc(cx, cy, hov ? 8 : 6, 0, Math.PI * 2);
+    drawCtx.fillStyle = isF ? '#22c55e' : isL ? '#ef4444' : (isDark ? '#22c55e' : '#16a34a');
+    drawCtx.fill();
+    drawCtx.beginPath();
+    drawCtx.arc(cx, cy, hov ? 3.5 : 2.5, 0, Math.PI * 2);
+    drawCtx.fillStyle = isDark ? '#0a0a0a' : '#fff';
+    drawCtx.fill();
+    // Label — only bend vertices numbered to match unfold
+    const bNum = bendNumMap[i];
+    if (bNum) {
+      const label = String(bNum);
+      drawCtx.font = 'bold 8px monospace';
+      const lw = drawCtx.measureText(label).width;
+      const lx = cx + 10, ly = cy - 6;
+      drawCtx.fillStyle = isDark ? '#2e1a0acc' : '#fff7edcc';
+      drawCtx.beginPath();
+      drawCtx.roundRect(lx - 2, ly - 7, lw + 4, 10, 2);
+      drawCtx.fill();
+      drawCtx.fillStyle = isDark ? '#fbbf24' : '#ea580c';
+      drawCtx.textAlign = 'left'; drawCtx.textBaseline = 'middle';
+      drawCtx.fillText(label, lx, ly - 2);
+    }
+    // Hit area for point (always, for dragging)
+    S._hitAreas.push({ type: 'point', index: i, x: cx - 10, y: cy - 10, w: 20, h: 20 });
+  });
+
+  // Hem tool: highlight hovered segment
+  if (S.toolMode === 'hem' && S.hemHoveredSeg >= 0 && S.hemHoveredSeg < S.points.length - 1) {
+    const si = S.hemHoveredSeg;
+    const a = w2c(S.points[si].x, S.points[si].y);
+    const b = w2c(S.points[si + 1].x, S.points[si + 1].y);
+    drawCtx.save();
+    drawCtx.strokeStyle = '#8b5cf6';
+    drawCtx.lineWidth = 6;
+    drawCtx.lineCap = 'round';
+    drawCtx.globalAlpha = 0.4;
+    drawCtx.beginPath();
+    drawCtx.moveTo(a.cx, a.cy);
+    drawCtx.lineTo(b.cx, b.cy);
+    drawCtx.stroke();
+    drawCtx.restore();
+  }
+
+  // Hem hooks (візуальні "крючки" кайми)
+  drawHemHooks2D();
+
+  // Close indicator
+  if ((S.toolMode === 'draw' || S.toolMode === 'select') && S.points.length >= 3 && S.mouseWorld) {
+    const fc = w2c(S.points[0].x, S.points[0].y);
+    const mc = w2c(S.mouseWorld.x, S.mouseWorld.y);
+    const dd = Math.sqrt((fc.cx - mc.cx) ** 2 + (fc.cy - mc.cy) ** 2);
+    if (dd < 15) {
+      const alpha = .5 + .3 * Math.sin(Date.now() / 200);
+      drawCtx.save();
+      drawCtx.globalAlpha = alpha;
+      drawCtx.strokeStyle = '#22c55e';
+      drawCtx.lineWidth = 3;
+      drawCtx.beginPath();
+      drawCtx.arc(fc.cx, fc.cy, 14, 0, Math.PI * 2);
+      drawCtx.stroke();
+      drawCtx.restore();
+      animFrame = requestAnimationFrame(drawDrawCanvas);
+      return;
+    }
+  }
+
+  // Snap indicator
+  if (S.toolMode === 'draw' && S.snapEndpoint >= 0 && S.snapEndpoint < S.points.length) {
+    const sp = w2c(S.points[S.snapEndpoint].x, S.points[S.snapEndpoint].y);
+    drawCtx.strokeStyle = '#06b6d4';
+    drawCtx.lineWidth = 2.5;
+    drawCtx.beginPath();
+    drawCtx.arc(sp.cx, sp.cy, 12, 0, Math.PI * 2);
+    drawCtx.stroke();
+  }
+
+  // Rubber band
+  if (S.toolMode === 'draw' && S.points.length > 0 && S.mouseWorld) {
+    const lp = S.points[S.points.length - 1];
+    const from = w2c(lp.x, lp.y);
+    const tw = S.snapToGrid ? snapPoint(S.mouseWorld) : S.mouseWorld;
+    const to = w2c(tw.x, tw.y);
+    drawCtx.strokeStyle = isDark ? '#22c55e44' : '#16a34a55';
+    drawCtx.lineWidth = 1.5;
+    drawCtx.setLineDash([6, 4]);
+    drawCtx.beginPath();
+    drawCtx.moveTo(from.cx, from.cy);
+    drawCtx.lineTo(to.cx, to.cy);
+    drawCtx.stroke();
+    drawCtx.setLineDash([]);
+    const len = dist(lp, tw);
+    drawCtx.fillStyle = isDark ? '#22c55e99' : '#16a34a88';
+    drawCtx.font = '10px monospace';
+    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+    drawCtx.fillText(len.toFixed(1) + ' mm', (from.cx + to.cx) / 2, (from.cy + to.cy) / 2 - 8);
+  }
+
+  // Measure tool
+  if (S.toolMode === 'measure' && measureStart) {
+    const mc = isDark ? '#fbbf24' : '#f59e0b';
+    const sc = w2c(measureStart.x, measureStart.y);
+    let ec;
+    if (measureEnd) ec = w2c(measureEnd.x, measureEnd.y);
+    else if (S.mouseWorld) ec = w2c(S.mouseWorld.x, S.mouseWorld.y);
+    else ec = sc;
+    drawCtx.strokeStyle = mc;
+    drawCtx.lineWidth = 1.5;
+    drawCtx.setLineDash([6, 4]);
+    drawCtx.beginPath();
+    drawCtx.moveTo(sc.cx, sc.cy);
+    drawCtx.lineTo(ec.cx, ec.cy);
+    drawCtx.stroke();
+    drawCtx.setLineDash([]);
+    [sc, ec].forEach(p => {
+      drawCtx.beginPath();
+      drawCtx.arc(p.cx, p.cy, 5, 0, Math.PI * 2);
+      drawCtx.fillStyle = mc;
+      drawCtx.fill();
+      drawCtx.beginPath();
+      drawCtx.arc(p.cx, p.cy, 2, 0, Math.PI * 2);
+      drawCtx.fillStyle = isDark ? '#0a0a0a' : '#fff';
+      drawCtx.fill();
+    });
+    const sp2 = measureEnd || S.mouseWorld || measureStart;
+    const dx2 = sp2.x - measureStart.x, dy2 = sp2.y - measureStart.y;
+    const d = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+    const ad = (Math.atan2(-dy2, dx2) * 180 / Math.PI);
+    const mxc = (sc.cx + ec.cx) / 2, myc = (sc.cy + ec.cy) / 2;
+    const lb = d.toFixed(1) + ' mm  ' + ad.toFixed(1) + '°';
+    drawCtx.font = 'bold 11px monospace';
+    const lw2 = drawCtx.measureText(lb).width;
+    drawCtx.fillStyle = isDark ? '#1a1a2ecc' : '#ffffffdd';
+    drawCtx.beginPath();
+    drawCtx.roundRect(mxc - lw2 / 2 - 4, myc - 18, lw2 + 8, 16, 3);
+    drawCtx.fill();
+    drawCtx.fillStyle = mc;
+    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+    drawCtx.fillText(lb, mxc, myc - 10);
+  }
+
+  // Mouse crosshair
+  if (S.mouseWorld) {
+    const mw = S.mouseWorld;
+    const sn = S.snapToGrid ? snapPoint(mw) : mw;
+    const mc = w2c(sn.x, sn.y);
+    drawCtx.strokeStyle = isDark ? '#ffffff18' : '#00000022';
+    drawCtx.lineWidth = .5;
+    drawCtx.setLineDash([3, 3]);
+    drawCtx.beginPath();
+    drawCtx.moveTo(mc.cx, 0); drawCtx.lineTo(mc.cx, h);
+    drawCtx.moveTo(0, mc.cy); drawCtx.lineTo(w, mc.cy);
+    drawCtx.stroke();
+    drawCtx.setLineDash([]);
+    drawCtx.fillStyle = isDark ? '#d4d4e8' : '#262626';
+    drawCtx.font = '10px monospace';
+    drawCtx.textAlign = 'left'; drawCtx.textBaseline = 'bottom';
+    drawCtx.fillText(sn.x.toFixed(1) + ', ' + sn.y.toFixed(1), 8, h - 8);
+  }
+}
+
+// ==================== UNFOLD CANVAS ====================
+const unfoldCanvas = document.getElementById('unfold-canvas');
+const unfoldCtx = unfoldCanvas.getContext('2d');
+let ufW = 300, ufH = 200;
+let ufManualZoom = null;
+// Sidebar scroll prevention — defined early for use in multiple sections
+const unfoldContEl = document.getElementById('unfold-container');
+const rightSidebarEl = unfoldContEl ? unfoldContEl.closest('aside') : null;
+
+function resizeUnfoldCanvas() {
+  const cont = document.getElementById('unfold-container');
+  if (!cont) return;
+  const r = cont.getBoundingClientRect();
+  ufW = Math.floor(r.width);
+  ufH = Math.floor(r.height);
+  const dpr = window.devicePixelRatio || 1;
+  unfoldCanvas.width = ufW * dpr;
+  unfoldCanvas.height = ufH * dpr;
+  unfoldCanvas.style.width = ufW + 'px';
+  unfoldCanvas.style.height = ufH + 'px';
+}
+
+function drawUnfoldCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  unfoldCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const w = ufW, h = ufH;
+  const isDark = S.isDark;
+
+  unfoldCtx.fillStyle = isDark ? '#1a1a2e' : '#fafafa';
+  unfoldCtx.fillRect(0, 0, w, h);
+
+  if (!S.unfoldResult || S.unfoldResult.totalLength <= 0) {
+    unfoldCtx.fillStyle = isDark ? 'rgba(163,163,184,.4)' : 'rgba(82,82,82,.3)';
+    unfoldCtx.font = '12px sans-serif';
+    unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
+    unfoldCtx.fillText(t('drawProfile') + ' \u2022 ' + t('shortcutUnfold'), w / 2, h / 2);
+    return;
+  }
+
+  const res = S.unfoldResult;
+  const L = res.totalLength, W = res.width;
+  let sc, ox, oy;
+  if (ufManualZoom && ufManualZoom.scale > 0) {
+    sc = ufManualZoom.scale; ox = ufManualZoom.ox; oy = ufManualZoom.oy;
+  } else {
+    const pad = 60;
+    sc = Math.min((w - pad * 2) / L, (h - pad * 2) / W, 5);
+    ox = (w - L * sc) / 2;
+    oy = (h - W * sc) / 2;
+  }
+
+  const isAnim = S.animBendIdx >= 0;
+
+  // Outer rect
+  unfoldCtx.strokeStyle = isDark ? '#22c55e' : '#16a34a';
+  unfoldCtx.lineWidth = 2;
+  unfoldCtx.strokeRect(ox, oy, L * sc, W * sc);
+
+  // Trim margin
+  unfoldCtx.save();
+  unfoldCtx.strokeStyle = isDark ? '#22c55e' : '#16a34a';
+  unfoldCtx.globalAlpha = .15;
+  unfoldCtx.lineWidth = 1;
+  unfoldCtx.setLineDash([4, 4]);
+  unfoldCtx.strokeRect(ox + 5 * sc, oy + 5 * sc, (L - 10) * sc, (W - 10) * sc);
+  unfoldCtx.setLineDash([]);
+  unfoldCtx.restore();
+
+  // Elements
+  let bc = 0;
+  res.elements.forEach(el => {
+    const after = isAnim && bc > S.animBendIdx;
+    unfoldCtx.save();
+    unfoldCtx.globalAlpha = after ? .3 : 1;
+    if (el.type === 'straight') {
+      unfoldCtx.fillStyle = isDark ? '#14532d80' : '#dcfce7';
+      unfoldCtx.fillRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
+      unfoldCtx.strokeStyle = isDark ? '#22c55e33' : '#16a34a33';
+      unfoldCtx.lineWidth = .5;
+      unfoldCtx.strokeRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
+      if (el.length > 5) {
+        const mx = (el.startX + el.endX) / 2;
+        unfoldCtx.fillStyle = isDark ? '#4ade80' : '#15803d';
+        unfoldCtx.font = 'bold 10px sans-serif';
+        unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
+        unfoldCtx.fillText(el.length.toFixed(1), ox + mx * sc, oy + W * sc / 2);
+      }
+    } else {
+      unfoldCtx.fillStyle = isDark ? '#7c2d1280' : '#fed7aa';
+      unfoldCtx.fillRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
+      unfoldCtx.strokeStyle = '#ea580c33';
+      unfoldCtx.lineWidth = .5;
+      unfoldCtx.strokeRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
+      const mx = (el.startX + el.endX) / 2;
+      unfoldCtx.fillStyle = isDark ? '#fb923c' : '#c2410c';
+      unfoldCtx.font = '9px sans-serif';
+      unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
+      unfoldCtx.fillText((el.angle * 180 / Math.PI).toFixed(0) + '°', ox + mx * sc, oy + W * sc / 2);
+      bc++;
+    }
+    unfoldCtx.restore();
+  });
+
+  // Hems
+  res.elements.forEach(el => {
+    if (el.type === 'hem') {
+      unfoldCtx.save();
+      unfoldCtx.fillStyle = isDark ? '#1e3a8a80' : '#bfdbfe';
+      unfoldCtx.fillRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
+      unfoldCtx.strokeStyle = isDark ? '#3b82f6' : '#2563eb';
+      unfoldCtx.lineWidth = 1;
+      unfoldCtx.setLineDash([2, 2]);
+      unfoldCtx.strokeRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
+      unfoldCtx.setLineDash([]);
+      const mx = (el.startX + el.endX) / 2;
+      unfoldCtx.fillStyle = isDark ? '#60a5fa' : '#1d4ed8';
+      unfoldCtx.font = 'bold 9px sans-serif';
+      unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
+      const arrow = el.edge === 'bottom' ? '↓' : '↑';
+      unfoldCtx.fillText(el.height.toFixed(1) + ' ' + arrow, ox + mx * sc, oy + W * sc / 2);
+      unfoldCtx.restore();
+    }
+  });
+
+  // Bend lines
+  unfoldCtx.setLineDash([4, 3]);
+  res.bendLinePositions.forEach((xp, idx) => {
+    const after = isAnim && idx > S.animBendIdx;
+    const curr = isAnim && idx === S.animBendIdx;
+    unfoldCtx.save();
+    if (after) unfoldCtx.globalAlpha = .3;
+    if (curr) {
+      unfoldCtx.strokeStyle = isDark ? '#fbbf24' : '#f59e0b';
+      unfoldCtx.lineWidth = 3;
+      unfoldCtx.shadowColor = isDark ? '#fbbf24' : '#f59e0b';
+      unfoldCtx.shadowBlur = 12;
+      unfoldCtx.setLineDash([]);
+    } else {
+      unfoldCtx.strokeStyle = isDark ? '#fb923c' : '#ea580c';
+      unfoldCtx.lineWidth = 1.5;
+    }
+    unfoldCtx.beginPath();
+    unfoldCtx.moveTo(ox + xp * sc, oy);
+    unfoldCtx.lineTo(ox + xp * sc, oy + W * sc);
+    unfoldCtx.stroke();
+    unfoldCtx.shadowColor = 'transparent';
+    unfoldCtx.shadowBlur = 0;
+    unfoldCtx.setLineDash([4, 3]);
+
+    // Number
+    const nr = curr ? 12 : 8;
+    const nx = ox + xp * sc, ny = oy + 12 + nr;
+    if (curr) {
+      unfoldCtx.shadowColor = isDark ? '#fbbf24' : '#f59e0b';
+      unfoldCtx.shadowBlur = 10;
+    }
+    unfoldCtx.beginPath();
+    unfoldCtx.arc(nx, ny, nr, 0, Math.PI * 2);
+    unfoldCtx.fillStyle = curr
+      ? (isDark ? '#fbbf24' : '#f59e0b')
+      : (isDark ? '#ea580c' : '#f97316');
+    unfoldCtx.fill();
+    unfoldCtx.strokeStyle = isDark ? '#0a0a0a' : '#fff';
+    unfoldCtx.lineWidth = 1.5;
+    unfoldCtx.setLineDash([]);
+    unfoldCtx.stroke();
+    unfoldCtx.shadowColor = 'transparent';
+    unfoldCtx.shadowBlur = 0;
+    unfoldCtx.fillStyle = '#fff';
+    unfoldCtx.font = curr ? 'bold 11px sans-serif' : 'bold 9px sans-serif';
+    unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
+    unfoldCtx.fillText(String(idx + 1), nx, ny);
+    unfoldCtx.restore();
+  });
+  unfoldCtx.setLineDash([]);
+
+  // Hem bend lines (no numbers)
+  if (res.hemBendLinePositions && res.hemBendLinePositions.length > 0) {
+    unfoldCtx.setLineDash([4, 3]);
+    unfoldCtx.strokeStyle = isDark ? '#3b82f6' : '#2563eb';
+    unfoldCtx.lineWidth = 1.5;
+    res.hemBendLinePositions.forEach(xp => {
+      unfoldCtx.beginPath();
+      unfoldCtx.moveTo(ox + xp * sc, oy);
+      unfoldCtx.lineTo(ox + xp * sc, oy + W * sc);
+      unfoldCtx.stroke();
+    });
+    unfoldCtx.setLineDash([]);
+  }
+
+  // Tick marks
+  const ti = L < 200 ? 10 : L < 1000 ? 50 : 100;
+  unfoldCtx.save();
+  unfoldCtx.strokeStyle = isDark ? '#555570' : '#737373';
+  unfoldCtx.lineWidth = .5;
+  let tci = 0;
+  for (let tm = ti; tm < L; tm += ti) {
+    tci++;
+    const isL = tci % 5 === 0;
+    const tl = isL ? 6 : 3;
+    const tpx = ox + tm * sc;
+    unfoldCtx.beginPath();
+    unfoldCtx.moveTo(tpx, oy);
+    unfoldCtx.lineTo(tpx, oy + tl);
+    unfoldCtx.stroke();
+  }
+  unfoldCtx.restore();
+
+  // Dimensions
+  const dimY = oy + W * sc + 15;
+  unfoldCtx.strokeStyle = isDark ? '#555570' : '#737373';
+  unfoldCtx.lineWidth = .8;
+  unfoldCtx.beginPath();
+  unfoldCtx.moveTo(ox, dimY);
+  unfoldCtx.lineTo(ox + L * sc, dimY);
+  unfoldCtx.stroke();
+  unfoldCtx.beginPath();
+  unfoldCtx.moveTo(ox, dimY - 4); unfoldCtx.lineTo(ox, dimY + 4);
+  unfoldCtx.moveTo(ox + L * sc, dimY - 4); unfoldCtx.lineTo(ox + L * sc, dimY + 4);
+  unfoldCtx.stroke();
+  unfoldCtx.fillStyle = isDark ? '#a3a3b8' : '#525252';
+  unfoldCtx.font = '10px monospace';
+  unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'top';
+  unfoldCtx.fillText(L.toFixed(1) + ' mm', ox + L * sc / 2, dimY + 4);
+
+  const dimX = ox + L * sc + 15;
+  unfoldCtx.beginPath();
+  unfoldCtx.moveTo(dimX, oy);
+  unfoldCtx.lineTo(dimX, oy + W * sc);
+  unfoldCtx.stroke();
+  unfoldCtx.beginPath();
+  unfoldCtx.moveTo(dimX - 4, oy); unfoldCtx.lineTo(dimX + 4, oy);
+  unfoldCtx.moveTo(dimX - 4, oy + W * sc); unfoldCtx.lineTo(dimX + 4, oy + W * sc);
+  unfoldCtx.stroke();
+  unfoldCtx.save();
+  unfoldCtx.translate(dimX + 4, oy + W * sc / 2);
+  unfoldCtx.rotate(-Math.PI / 2);
+  unfoldCtx.fillStyle = isDark ? '#a3a3b8' : '#525252';
+  unfoldCtx.font = '10px monospace';
+  unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
+  unfoldCtx.fillText(W.toFixed(1) + ' mm', 0, 0);
+  unfoldCtx.restore();
+
+  // Scale bar
+  const sbLen = 10 * sc;
+  if (sbLen > 20 && sbLen < w / 2) {
+    const sbx = 10, sby = h - 14;
+    unfoldCtx.strokeStyle = isDark ? '#a3a3b8' : '#525252';
+    unfoldCtx.lineWidth = 1.5;
+    unfoldCtx.beginPath();
+    unfoldCtx.moveTo(sbx, sby);
+    unfoldCtx.lineTo(sbx + sbLen, sby);
+    unfoldCtx.moveTo(sbx, sby - 3); unfoldCtx.lineTo(sbx, sby + 3);
+    unfoldCtx.moveTo(sbx + sbLen, sby - 3); unfoldCtx.lineTo(sbx + sbLen, sby + 3);
+    unfoldCtx.stroke();
+    unfoldCtx.fillStyle = isDark ? '#a3a3b8' : '#525252';
+    unfoldCtx.font = '9px monospace';
+    unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'bottom';
+    unfoldCtx.fillText('10 mm', sbx + sbLen / 2, sby - 4);
+  }
+
+  // Legend
+  const lgX = w - 8, lgY = 14;
+  unfoldCtx.textAlign = 'right'; unfoldCtx.textBaseline = 'middle';
+  unfoldCtx.font = '9px sans-serif';
+  unfoldCtx.fillStyle = isDark ? '#14532d80' : '#dcfce7';
+  unfoldCtx.fillRect(lgX - 60, lgY - 5, 12, 10);
+  unfoldCtx.strokeStyle = isDark ? '#22c55e33' : '#16a34a33';
+  unfoldCtx.lineWidth = .5;
+  unfoldCtx.strokeRect(lgX - 60, lgY - 5, 12, 10);
+  unfoldCtx.fillStyle = isDark ? '#a3a3b8' : '#525252';
+  unfoldCtx.fillText(t('straightLegend'), lgX, lgY);
+  unfoldCtx.fillStyle = isDark ? '#7c2d1280' : '#fed7aa';
+  unfoldCtx.fillRect(lgX - 60, lgY + 12, 12, 10);
+  unfoldCtx.strokeStyle = isDark ? '#ea580c33' : '#ea580c33';
+  unfoldCtx.lineWidth = .5;
+  unfoldCtx.strokeRect(lgX - 60, lgY + 12, 12, 10);
+  unfoldCtx.fillStyle = isDark ? '#a3a3b8' : '#525252';
+  unfoldCtx.fillText(t('bendLegend'), lgX, lgY + 17);
+}
+
+// ==================== BEND ANIMATION ====================
+let bendAnimTimer = null;
+
+function toggleBendAnim() {
+  if (bendAnimTimer) {
+    clearInterval(bendAnimTimer);
+    bendAnimTimer = null;
+    S.animBendIdx = -1;
+  } else {
+    S.animBendIdx = 0;
+    bendAnimTimer = setInterval(() => {
+      if (!S.unfoldResult || S.animBendIdx >= S.unfoldResult.bendLinePositions.length) {
+        clearInterval(bendAnimTimer);
+        bendAnimTimer = null;
+        S.animBendIdx = -1;
+        return;
+      }
+      S.animBendIdx++;
+      drawUnfoldCanvas();
+      draw3DPreview();
+    }, 800);
+  }
+}
+
+// ==================== 3D PREVIEW ====================
+let view3dW = 300, view3dH = 256;
+let view3dZoom = 1, view3dRotY = 0.5, view3dRotX = -0.5;
+let view3dUserZoomed = false;
+let isDragging3D = false, drag3dStart = null;
+// Центр модели для центрирования 3D вида
+let view3dCenterX = 0, view3dCenterY = 0;
+
+// ==================== 3D MODAL ====================
+let view3dModalOpen = false;
+let view3dFullW = 800, view3dFullH = 600;
+let isDragging3DFull = false, drag3dStartFull = null;
+
+function toggle3DModal() {
+  const modal = document.getElementById('view3d-modal');
+  if (view3dModalOpen) {
+    close3DModal();
+  } else {
+    open3DModal();
+  }
+}
+
+function open3DModal() {
+  const modal = document.getElementById('view3d-modal');
+  modal.classList.remove('hidden');
+  view3dModalOpen = true;
+  
+  // Resize full canvas
+  requestAnimationFrame(() => {
+    resizeView3dFull();
+    draw3DPreviewFull();
+  });
+}
+
+function close3DModal() {
+  const modal = document.getElementById('view3d-modal');
+  modal.classList.add('hidden');
+  view3dModalOpen = false;
+  isDragging3DFull = false;
+}
+
+function resizeView3dFull() {
+  const cont = document.getElementById('view3d-modal-container');
+  if (!cont) return;
+  const r = cont.getBoundingClientRect();
+  const border = 2;
+  view3dFullW = Math.max(200, Math.floor(r.width - border * 2));
+  view3dFullH = Math.max(200, Math.floor(r.height - border * 2));
+  const dpr = window.devicePixelRatio || 1;
+  const cv = document.getElementById('view3d-canvas-full');
+  if (!cv) return;
+  cv.width = view3dFullW * dpr;
+  cv.height = view3dFullH * dpr;
+  cv.style.width = view3dFullW + 'px';
+  cv.style.height = view3dFullH + 'px';
+}
+
+function draw3DPreviewFull() {
+  const cv = document.getElementById('view3d-canvas-full');
+  if (!cv || S.points.length < 2) return;
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+  const isDark = S.isDark;
+  ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
+  ctx.fillRect(0, 0, view3dFullW, view3dFullH);
+  
+  draw3DProfile3D(true);
+  
+  // Контролы
+  const ctrl = document.getElementById('view3d-controls-full');
+  if (ctrl) {
+    ctrl.textContent = t('dragToRotateEsc');
+  }
+}
+
+function resizeView3d() {
+  const cont = document.getElementById('view3d-container');
+  if (!cont) return;
+  const r = cont.getBoundingClientRect();
+  // Учитываем border (2px с каждой стороны)
+  const border = 2;
+  view3dW = Math.max(100, Math.floor(r.width - border * 2));
+  view3dH = Math.max(80, Math.floor(r.height - border * 2));
+  const dpr = window.devicePixelRatio || 1;
+  const cv = document.getElementById('view3d-canvas');
+  if (!cv) return;
+  cv.width = view3dW * dpr;
+  cv.height = view3dH * dpr;
+  cv.style.width = view3dW + 'px';
+  cv.style.height = view3dH + 'px';
+}
+
+function project3D(x, y, z, useFull = false) {
+  const cosY = Math.cos(view3dRotY), sinY = Math.sin(view3dRotY);
+  const cosX = Math.cos(view3dRotX), sinX = Math.sin(view3dRotX);
+  
+  // Смещаем относительно центра модели
+  let rx = x - view3dCenterX;
+  let ry = y - view3dCenterY;
+  let rz = z;
+  
+  let x1 = rx * cosY - rz * sinY;
+  let z1 = rx * sinY + rz * cosY;
+  let y1 = ry;
+  
+  let y2 = y1 * cosX - z1 * sinX;
+  let z2 = y1 * sinX + z1 * cosX;
+  
+  const scale = view3dZoom * 0.5;
+  const w = useFull ? view3dFullW : view3dW;
+  const h = useFull ? view3dFullH : view3dH;
+  
+  return {
+    x: w / 2 + x1 * scale,
+    y: h / 2 - y2 * scale
+  };
+}
+
+function draw3DProfile3D(useFull = false) {
+  const cv = useFull
+    ? document.getElementById('view3d-canvas-full')
+    : document.getElementById('view3d-canvas');
+  if (!cv || S.points.length < 2) return;
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const isDark = S.isDark;
+  const T = S.metal.thickness;
+  const W = S.metal.width || 100;
+  const hw = W / 2;
+  
+  const w = useFull ? view3dFullW : view3dW;
+  const h = useFull ? view3dFullH : view3dH;
+  
+  // Вычисляем центр модели (среднее всех точек + учёт толщины)
+  let sumX = 0, sumY = 0;
+  S.points.forEach(p => { sumX += p.x; sumY += p.y; });
+  view3dCenterX = sumX / S.points.length;
+  view3dCenterY = sumY / S.points.length + T / 2;
+  
+  // Вычисляем бокс для автомасштаба
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  
+  const finalPoints = [];
+  for (let i = 0; i < S.points.length; i++) {
+    const pt = S.points[i];
+    const corners = [
+      { x: pt.x, y: pt.y, z: -hw },
+      { x: pt.x, y: pt.y, z: hw },
+      { x: pt.x, y: pt.y + T, z: -hw },
+      { x: pt.x, y: pt.y + T, z: hw }
+    ];
+    const corners3D = corners.map(c => project3D(c.x, c.y, c.z, useFull));
+    corners3D.forEach(p => {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    });
+    finalPoints.push(corners3D);
+  }
+  
+  // Автомасштаб (только если пользователь не зумил вручную)
+  if (!view3dUserZoomed && maxX - minX > 0 && maxY - minY > 0) {
+    const pad = useFull ? 60 : 30;
+    const autoScale = Math.min((w - pad * 2) / (maxX - minX), (h - pad * 2) / (maxY - minY), 3);
+    view3dZoom = autoScale / 0.5;
+  }
+  
+  // Пересчитываем точки с новым масштабом
+  const pts = [];
+  for (let i = 0; i < S.points.length; i++) {
+    const pt = S.points[i];
+    const corners = [
+      { x: pt.x, y: pt.y, z: -hw },
+      { x: pt.x, y: pt.y, z: hw },
+      { x: pt.x, y: pt.y + T, z: -hw },
+      { x: pt.x, y: pt.y + T, z: hw }
+    ];
+    pts.push(corners.map(c => project3D(c.x, c.y, c.z, useFull)));
+  }
+  
+  // Рисуем сегменты
+  for (let i = 0; i < S.points.length - 1; i++) {
+    const p0 = pts[i];
+    const p1 = pts[i + 1];
+    
+    // Верхняя грань
+    ctx.beginPath();
+    ctx.moveTo(p0[2].x, p0[2].y);
+    ctx.lineTo(p0[3].x, p0[3].y);
+    ctx.lineTo(p1[3].x, p1[3].y);
+    ctx.lineTo(p1[2].x, p1[2].y);
+    ctx.closePath();
+    ctx.fillStyle = isDark ? '#4ade80' : '#22c55e';
+    ctx.fill();
+    ctx.strokeStyle = isDark ? '#86efac' : '#16a34a';
+    ctx.lineWidth = useFull ? 1 : 0.5;
+    ctx.stroke();
+    
+    // Передняя грань
+    ctx.beginPath();
+    ctx.moveTo(p0[1].x, p0[1].y);
+    ctx.lineTo(p0[3].x, p0[3].y);
+    ctx.lineTo(p1[3].x, p1[3].y);
+    ctx.lineTo(p1[1].x, p1[1].y);
+    ctx.closePath();
+    ctx.fillStyle = isDark ? '#22c55e' : '#16a34a';
+    ctx.fill();
+    ctx.strokeStyle = isDark ? '#86efac' : '#16a34a';
+    ctx.lineWidth = useFull ? 1 : 0.5;
+    ctx.stroke();
+    
+    // Задняя грань
+    ctx.beginPath();
+    ctx.moveTo(p0[0].x, p0[0].y);
+    ctx.lineTo(p0[2].x, p0[2].y);
+    ctx.lineTo(p1[2].x, p1[2].y);
+    ctx.lineTo(p1[0].x, p1[0].y);
+    ctx.closePath();
+    ctx.fillStyle = isDark ? '#15803d' : '#15803d';
+    ctx.fill();
+    ctx.strokeStyle = isDark ? '#4ade80' : '#16a34a';
+    ctx.lineWidth = useFull ? 1 : 0.5;
+    ctx.stroke();
+    
+    // Линии гибов
+    if (i > 0 && i < S.points.length - 2) {
+      if (isBendAtPoint(i)) {
+        ctx.beginPath();
+        ctx.moveTo(p0[2].x, p0[2].y);
+        ctx.lineTo(p0[3].x, p0[3].y);
+        ctx.strokeStyle = isDark ? '#fbbf24' : '#f59e0b';
+        ctx.lineWidth = useFull ? 2 : 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        const midX = (p0[2].x + p0[3].x) / 2;
+        const midY = (p0[2].y + p0[3].y) / 2 - (useFull ? 8 : 5);
+        ctx.fillStyle = isDark ? '#fbbf24' : '#f59e0b';
+        ctx.font = (useFull ? 'bold 10px' : 'bold 8px') + ' sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText((i + 1), midX, midY);
+      }
+    }
+  }
+
+  // Hem 3D hooks — visual "hook" geometry
+  drawHemHooks3D(ctx, pts, useFull, isDark);
+}
+
+// ==================== HEM HOOK 3D ====================
+function drawHemHooks3D(ctx, pts, useFull, isDark) {
+  if (!S.hems || S.hems.length === 0) return;
+  if (S.points.length < 2) return;
+
+  const T = S.metal.thickness;
+  const W = S.metal.width || 100;
+  const hw = W / 2;
+  const lw = useFull ? 1 : 0.5;
+
+  S.hems.forEach(hem => {
+    const si = hem.segIndex;
+    const numSegs = S.points.length - 1;
+    if (si < 0 || si > numSegs) return;
+
+    let pt, neighbor, isLeft;
+    if (si >= numSegs - 1) {
+      pt = S.points[S.points.length - 1];
+      neighbor = S.points[S.points.length - 2];
+    } else {
+      pt = S.points[si];
+      neighbor = S.points[si + 1];
+    }
+    isLeft = hem.side !== 'right';
+
+    const segAngle = Math.atan2(neighbor.y - pt.y, neighbor.x - pt.x);
+    // Перпендикуляр вниз (внутрь материала)
+    const perpAngle = isLeft ? (segAngle - Math.PI / 2) : (segAngle + Math.PI / 2);
+    const br = S.metal.bendRadius;
+    const hemHeight = hem.height;
+
+    // L-образная геометрия: перпендикуляр вниз, параллельно вперёд
+    const h1 = { x: pt.x + Math.cos(perpAngle) * br, y: pt.y + Math.sin(perpAngle) * br };
+    const h2 = { x: h1.x + Math.cos(segAngle) * hemHeight, y: h1.y + Math.sin(segAngle) * hemHeight };
+
+    const hemPts3D = [pt, h1, h2].map(p => [
+      project3D(p.x, p.y, -hw, useFull),
+      project3D(p.x, p.y, hw, useFull),
+      project3D(p.x, p.y + T, -hw, useFull),
+      project3D(p.x, p.y + T, hw, useFull)
+    ]);
+
+    const col = isLeft ? '#3b82f6' : '#8b5cf6';
+    const colLight = isLeft ? (isDark ? '#2563eb' : '#60a5fa') : (isDark ? '#7c3aed' : '#a78bfa');
+
+    for (let i = 0; i < hemPts3D.length - 1; i++) {
+      const c = hemPts3D[i], n = hemPts3D[i + 1];
+      ctx.beginPath();
+      ctx.moveTo(c[1].x, c[1].y); ctx.lineTo(c[3].x, c[3].y);
+      ctx.lineTo(n[3].x, n[3].y); ctx.lineTo(n[1].x, n[1].y);
+      ctx.closePath();
+      ctx.fillStyle = colLight; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(c[2].x, c[2].y); ctx.lineTo(c[3].x, c[3].y);
+      ctx.lineTo(n[3].x, n[3].y); ctx.lineTo(n[2].x, n[2].y);
+      ctx.closePath();
+      ctx.fillStyle = col; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(c[0].x, c[0].y); ctx.lineTo(c[2].x, c[2].y);
+      ctx.lineTo(n[2].x, n[2].y); ctx.lineTo(n[0].x, n[0].y);
+      ctx.closePath();
+      ctx.fillStyle = isDark ? '#1e40af' : '#93c5fd'; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(c[0].x, c[0].y); ctx.lineTo(c[1].x, c[1].y);
+      ctx.lineTo(n[1].x, n[1].y); ctx.lineTo(n[0].x, n[0].y);
+      ctx.closePath();
+      ctx.fillStyle = isDark ? '#1e3a8a' : '#bfdbfe'; ctx.fill();
+      ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.stroke();
+    }
+  });
+}
+
+
+function draw3DPreview() {
+  const cv = document.getElementById('view3d-canvas');
+  if (!cv || S.points.length < 2) return;
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  
+  const isDark = S.isDark;
+  ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
+  ctx.fillRect(0, 0, view3dW, view3dH);
+  
+  draw3DProfile3D(false);
+  
+  // Контролы
+  const ctrl = document.getElementById('view3d-controls');
+  if (ctrl) {
+    ctrl.textContent = t('dragToRotate');
+  }
+}
+
+function isBendAtPoint(idx) {
+  if (idx < 1 || idx >= S.points.length - 1) return false;
+  const prev = S.points[idx - 1], curr = S.points[idx], next = S.points[idx + 1];
+  const aIn = Math.atan2(curr.y - prev.y, curr.x - prev.x);
+  const aOut = Math.atan2(next.y - curr.y, next.x - curr.x);
+  let def = aOut - aIn;
+  while (def > Math.PI) def -= 2 * Math.PI;
+  while (def <= -Math.PI) def += 2 * Math.PI;
+  const ba = Math.abs(def);
+  return ba >= 5 * Math.PI / 180 && ba <= Math.PI - 5 * Math.PI / 180;
+}
+
+// ==================== 3D CANVAS EVENTS ====================
+(function() {
+  const cv = document.getElementById('view3d-canvas');
+  if (!cv) return;
+
+  // Prevent sidebar scroll when hovering over 3D view
+  const cont3d = document.getElementById('view3d-container');
+  if (cont3d && rightSidebarEl) {
+    cont3d.addEventListener('mouseenter', () => { rightSidebarEl.style.overflowY = 'hidden'; });
+    cont3d.addEventListener('mouseleave', () => { rightSidebarEl.style.overflowY = 'auto'; });
+  }
+  cv.addEventListener('mousedown', e => {
+    e.preventDefault();
+    isDragging3D = true;
+    drag3dStart = { x: e.clientX, y: e.clientY };
+    cv.style.cursor = 'grabbing';
+  });
+  
+  cv.addEventListener('mousemove', e => {
+    if (!isDragging3D) return;
+    const dx = e.clientX - drag3dStart.x;
+    const dy = e.clientY - drag3dStart.y;
+    view3dRotY += dx * 0.01;
+    view3dRotX += dy * 0.01;
+    view3dRotX = Math.max(-1.2, Math.min(1.2, view3dRotX));
+    drag3dStart = { x: e.clientX, y: e.clientY };
+    draw3DPreview();
+  });
+  
+  cv.addEventListener('mouseup', () => {
+    isDragging3D = false;
+    cv.style.cursor = 'grab';
+  });
+  
+  cv.addEventListener('mouseleave', () => {
+    isDragging3D = false;
+    cv.style.cursor = 'grab';
+  });
+  
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    view3dZoom = Math.max(0.3, Math.min(5, view3dZoom * factor));
+    view3dUserZoomed = true;
+    draw3DPreview();
+  }, { passive: false });
+  
+  cv.style.cursor = 'grab';
+})();
+
+// ==================== CANVAS EVENTS ====================
+function findNearPoint(cx, cy) {
+  for (let i = 0; i < S.points.length; i++) {
+    const p = w2c(S.points[i].x, S.points[i].y);
+    const d = Math.sqrt((p.cx - cx) ** 2 + (p.cy - cy) ** 2);
+    if (d < 12) return i;
+  }
+  return null;
+}
+
+function isNearFirst(cx, cy) {
+  if (S.points.length < 3) return false;
+  const f = w2c(S.points[0].x, S.points[0].y);
+  return Math.sqrt((f.cx - cx) ** 2 + (f.cy - cy) ** 2) < 15;
+}
+
+/**
+ * Найти hit area по координатам мыши
+ */
+function findHitArea(cx, cy) {
+  if (!S._hitAreas) return null;
+  for (let i = S._hitAreas.length - 1; i >= 0; i--) {
+    const a = S._hitAreas[i];
+    if (cx >= a.x && cx <= a.x + a.w && cy >= a.y && cy <= a.y + a.h) {
+      return a;
+    }
+  }
+  return null;
+}
+
+drawCanvas.addEventListener('mousedown', e => {
+  const r = drawCanvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+
+  if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    isPanning = true;
+    panStart = { x: e.clientX, y: e.clientY, ox: S.viewport.offsetX, oy: S.viewport.offsetY };
+    drawCanvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  if (e.button === 0 && S.toolMode === 'draw') {
+    const w = c2w(cx, cy);
+    let p = S.snapToGrid ? snapPoint(w) : w;
+    // Snap to first point to close
+    if (S.points.length >= 3 && isNearFirst(cx, cy)) {
+      addPoint({ x: S.points[0].x, y: S.points[0].y });
+    } else {
+      // Snap to existing point
+      let snapped = false;
+      for (let i = 0; i < S.points.length; i++) {
+        const pp = w2c(S.points[i].x, S.points[i].y);
+        if (Math.sqrt((pp.cx - cx) ** 2 + (pp.cy - cy) ** 2) < 12) {
+          p = { x: S.points[i].x, y: S.points[i].y };
+          snapped = true;
+          break;
+        }
+      }
+      addPoint(p);
+    }
+    renderAll();
+  } else if (e.button === 0 && S.toolMode === 'select') {
+    // Проверяем клик по hit areas (только сегменты — для редактирования длины)
+    const hit = findHitArea(cx, cy);
+    if (hit && hit.type === 'segment') {
+      editSegment(hit.index);
+      renderAll();
+    } else {
+      // Перетаскиваем точку
+      const idx = findNearPoint(cx, cy);
+      if (idx !== null) {
+        S.undoHistory = [...S.undoHistory, cloneState()];
+        if (S.undoHistory.length > 50) S.undoHistory.shift();
+        S.redoHistory = [];
+        dragPtIdx = idx;
+      }
+    }
+  } else if (e.button === 0 && S.toolMode === 'erase') {
+    const idx = findNearPoint(cx, cy);
+    if (idx !== null) { removePoint(idx); renderAll(); }
+  } else if (e.button === 0 && S.toolMode === 'measure') {
+    if (measureStep === 0) { measureStart = c2w(cx, cy); measureEnd = null; measureStep = 1; }
+    else { measureEnd = c2w(cx, cy); measureStep = 2; }
+    drawDrawCanvas();
+  } else if (e.button === 0 && S.toolMode === 'hem') {
+    const segIdx = findNearSegment(cx, cy, 15);
+    if (segIdx >= 0) {
+      showHemDialog(segIdx);
+    }
+  }
+});
+
+drawCanvas.addEventListener('mousemove', e => {
+  const r = drawCanvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  S.mouseWorld = c2w(cx, cy);
+
+  if (isPanning && panStart) {
+    S.viewport.offsetX = panStart.ox + (e.clientX - panStart.x);
+    S.viewport.offsetY = panStart.oy + (e.clientY - panStart.y);
+    drawDrawCanvas();
+    return;
+  }
+
+  if (dragPtIdx !== null) {
+    const w = c2w(cx, cy);
+    const p = S.snapToGrid ? snapPoint(w) : w;
+    S.points = S.points.map((pt, i) => i === dragPtIdx ? { ...p } : pt);
+    maybeAutoUnfold();
+    drawDrawCanvas();
+    renderUnfoldInfo();
+    return;
+  }
+
+  // Check snap endpoint
+  S.snapEndpoint = -1;
+  if (S.toolMode === 'draw' && S.points.length > 0) {
+    for (let i = 0; i < S.points.length; i++) {
+      const pp = w2c(S.points[i].x, S.points[i].y);
+      if (Math.sqrt((pp.cx - cx) ** 2 + (pp.cy - cy) ** 2) < 12) {
+        S.snapEndpoint = i;
+        break;
+      }
+    }
+  }
+
+  S.hoveredPt = findNearPoint(cx, cy);
+
+  // Hem tool: track hovered segment
+  S.hemHoveredSeg = -1;
+  if (S.toolMode === 'hem') {
+    S.hemHoveredSeg = findNearSegment(cx, cy, 15);
+  }
+
+  // Cursor
+  if (S.toolMode === 'draw') drawCanvas.style.cursor = 'crosshair';
+  else if (S.toolMode === 'select') drawCanvas.style.cursor = S.hoveredPt !== null ? 'grab' : 'default';
+  else if (S.toolMode === 'erase') drawCanvas.style.cursor = S.hoveredPt !== null ? 'pointer' : 'default';
+  else if (S.toolMode === 'measure') drawCanvas.style.cursor = 'crosshair';
+  else if (S.toolMode === 'hem') drawCanvas.style.cursor = S.hemHoveredSeg >= 0 ? 'pointer' : 'default';
+
+  drawDrawCanvas();
+});
+
+drawCanvas.addEventListener('mouseup', e => {
+  if (isPanning) {
+    isPanning = false;
+    panStart = null;
+    drawCanvas.style.cursor = S.toolMode === 'draw' ? 'crosshair' : 'default';
+  }
+  if (dragPtIdx !== null) {
+    dragPtIdx = null;
+    renderAll();
+  }
+});
+
+drawCanvas.addEventListener('mouseleave', () => {
+  S.mouseWorld = null;
+  isPanning = false;
+  panStart = null;
+  S.hoveredPt = -1;
+  S.snapEndpoint = -1;
+  S.hemHoveredSeg = -1;
+  drawDrawCanvas();
+});
+
+drawCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = drawCanvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const ns = Math.max(.1, Math.min(50, S.viewport.scale * factor));
+  const wx = (cx - S.viewport.offsetX) / S.viewport.scale;
+  const wy = -(cy - S.viewport.offsetY) / S.viewport.scale;
+  S.viewport.offsetX = cx - wx * ns;
+  S.viewport.offsetY = cy + wy * ns;
+  S.viewport.scale = ns;
+  drawDrawCanvas();
+}, { passive: false });
+
+drawCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r = drawCanvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const w = c2w(cx, cy);
+  const cm = document.getElementById('context-menu');
+  cm.innerHTML = '';
+  cm.classList.remove('hidden');
+  cm.style.left = e.clientX + 'px';
+  cm.style.top = e.clientY + 'px';
+  const addBtn = (label, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = () => { fn(); cm.classList.add('hidden'); };
+    cm.appendChild(b);
+  };
+  // Проверяем, есть ли кайма на ближайшем сегменте
+  const nearSeg = findNearSegment(cx, cy, 20);
+  if (nearSeg >= 0 && S.hems.find(h => h.segIndex === nearSeg)) {
+    addBtn(t('hemContextMenu'), () => {
+      removeHem(nearSeg);
+    });
+  }
+  addBtn(t('addPoint'), () => {
+    const p = S.snapToGrid ? snapPoint(w) : w;
+    addPoint(p);
+    renderAll();
+  });
+  addBtn(t('centerView'), () => {
+    S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 };
+    drawDrawCanvas();
+  });
+  addBtn(t('copyCoords'), () => {
+    const sn = S.snapToGrid ? snapPoint(w) : w;
+    navigator.clipboard.writeText(sn.x.toFixed(1) + ', ' + sn.y.toFixed(1));
+  });
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.context-menu')) {
+    document.getElementById('context-menu').classList.add('hidden');
+  }
+});
+
+// Unfold canvas zoom + pan
+// Prevent sidebar scroll when hovering over unfold area
+if (unfoldContEl && rightSidebarEl) {
+  unfoldContEl.addEventListener('mouseenter', () => { rightSidebarEl.style.overflowY = 'hidden'; });
+  unfoldContEl.addEventListener('mouseleave', () => { rightSidebarEl.style.overflowY = 'auto'; });
+}
+
+// --- Unfold pan state ---
+let ufPanning = false;
+let ufPanStart = null;
+
+function ufGetAutoScale() {
+  if (!S.unfoldResult) return { sc: 1, ox: 0, oy: 0 };
+  const pad = 60;
+  const sc = Math.min((ufW - pad * 2) / S.unfoldResult.totalLength, (ufH - pad * 2) / S.unfoldResult.width, 5);
+  const ox = (ufW - S.unfoldResult.totalLength * sc) / 2;
+  const oy = (ufH - S.unfoldResult.width * sc) / 2;
+  return { sc, ox, oy };
+}
+
+function ufGetCurrentView() {
+  if (ufManualZoom && ufManualZoom.scale > 0) {
+    return { sc: ufManualZoom.scale, ox: ufManualZoom.ox, oy: ufManualZoom.oy };
+  }
+  return ufGetAutoScale();
+}
+
+unfoldCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!S.unfoldResult) return;
+  const r = unfoldCanvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const view = ufGetCurrentView();
+  const curSc = view.sc, curOx = view.ox, curOy = view.oy;
+  const f = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  const ns = Math.max(.3, Math.min(15, curSc * f));
+  const wx = (cx - curOx) / curSc, wy = (cy - curOy) / curSc;
+  ufManualZoom = { scale: ns, ox: cx - wx * ns, oy: cy - wy * ns };
+  drawUnfoldCanvas();
+}, { passive: false });
+
+unfoldCanvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  if (!S.unfoldResult) return;
+  e.preventDefault();
+  ufPanning = true;
+  ufPanStart = { x: e.clientX, y: e.clientY };
+  // Ensure we have a manual zoom to pan
+  if (!ufManualZoom || ufManualZoom.scale <= 0) {
+    const v = ufGetAutoScale();
+    ufManualZoom = { scale: v.sc, ox: v.ox, oy: v.oy };
+  }
+  ufPanStart.ox = ufManualZoom.ox;
+  ufPanStart.oy = ufManualZoom.oy;
+  unfoldCanvas.style.cursor = 'grabbing';
+});
+
+unfoldCanvas.addEventListener('mousemove', e => {
+  if (!ufPanning || !ufPanStart) return;
+  const dx = e.clientX - ufPanStart.x;
+  const dy = e.clientY - ufPanStart.y;
+  ufManualZoom.ox = ufPanStart.ox + dx;
+  ufManualZoom.oy = ufPanStart.oy + dy;
+  drawUnfoldCanvas();
+});
+
+unfoldCanvas.addEventListener('mouseup', () => {
+  ufPanning = false;
+  ufPanStart = null;
+  unfoldCanvas.style.cursor = 'grab';
+});
+
+unfoldCanvas.addEventListener('mouseleave', () => {
+  ufPanning = false;
+  ufPanStart = null;
+  unfoldCanvas.style.cursor = 'default';
+});
+
+unfoldCanvas.style.cursor = 'grab';
+
+// Double-click to reset zoom
+unfoldCanvas.addEventListener('dblclick', () => {
+  ufManualZoom = null;
+  drawUnfoldCanvas();
+});
+
+// ==================== 3D MODAL EVENTS ====================
+(function() {
+  const cv = document.getElementById('view3d-canvas-full');
+  if (!cv) return;
+  
+  cv.addEventListener('mousedown', e => {
+    e.preventDefault();
+    isDragging3DFull = true;
+    drag3dStartFull = { x: e.clientX, y: e.clientY };
+    cv.style.cursor = 'grabbing';
+  });
+  
+  cv.addEventListener('mousemove', e => {
+    if (!isDragging3DFull) return;
+    const dx = e.clientX - drag3dStartFull.x;
+    const dy = e.clientY - drag3dStartFull.y;
+    view3dRotY += dx * 0.01;
+    view3dRotX += dy * 0.01;
+    view3dRotX = Math.max(-1.2, Math.min(1.2, view3dRotX));
+    drag3dStartFull = { x: e.clientX, y: e.clientY };
+    draw3DPreviewFull();
+  });
+  
+  cv.addEventListener('mouseup', () => {
+    isDragging3DFull = false;
+    cv.style.cursor = 'grab';
+  });
+  
+  cv.addEventListener('mouseleave', () => {
+    isDragging3DFull = false;
+    cv.style.cursor = 'grab';
+  });
+  
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    view3dZoom = Math.max(0.3, Math.min(5, view3dZoom * factor));
+    view3dUserZoomed = true;
+    draw3DPreviewFull();
+    draw3DPreview();
+  }, { passive: false });
+  
+  cv.style.cursor = 'grab';
+  
+  // Escape key to close modal
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && view3dModalOpen) {
+      close3DModal();
+    }
+  });
+  
+  // Window resize handler for modal
+  window.addEventListener('resize', () => {
+    if (view3dModalOpen) {
+      resizeView3dFull();
+      draw3DPreviewFull();
+    }
+  });
+})();
