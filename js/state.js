@@ -45,7 +45,8 @@ function snapPoint(p) {
   }
   const pts = S.points;
   if (!pts.length) return { x: Math.round(p.x / gs) * gs, y: Math.round(p.y / gs) * gs };
-  const last = pts[pts.length - 1];
+  // При рисовании от первой точки угол отсчитываем от неё
+  const last = S.drawFromIdx === 0 ? pts[0] : pts[pts.length - 1];
   const dx = p.x - last.x, dy = p.y - last.y;
   const rawA = Math.atan2(dy, dx);
   const snapDeg = Number(S.angleSnap);
@@ -61,11 +62,13 @@ function snapPoint(p) {
 function addPoint(p) {
   S.undoHistory = [...S.undoHistory, cloneState()];
   if (S.undoHistory.length > 50) S.undoHistory.shift();
-  // Вставка после активной точки, если она выбрана (иначе — в конец)
-  const insertIdx = S.drawFromIdx != null && S.drawFromIdx >= 0 && S.drawFromIdx < S.points.length
-    ? S.drawFromIdx + 1
-    : S.points.length;
-  S.points = [...S.points.slice(0, insertIdx), p, ...S.points.slice(insertIdx)];
+  // drawFromIdx === 0 → вставка в начало (рисуем от первой точки)
+  // drawFromIdx === null → вставка в конец (рисуем от последней точки)
+  if (S.drawFromIdx === 0 && S.points.length > 0) {
+    S.points = [p, ...S.points];
+  } else {
+    S.points = [...S.points, p];
+  }
   S.redoHistory = [];
   maybeAutoUnfold();
 }
@@ -73,14 +76,10 @@ function addPoint(p) {
 function removePoint(idx) {
   S.undoHistory = [...S.undoHistory, cloneState()];
   if (S.undoHistory.length > 50) S.undoHistory.shift();
+  // Если удалили первую точку в режиме рисования от неё — сброс
+  if (S.drawFromIdx === 0 && idx === 0) S.drawFromIdx = null;
   S.points = S.points.filter((_, i) => i !== idx);
   S.redoHistory = [];
-  // Активная точка могла сместиться или удалиться
-  if (S.drawFromIdx !== null) {
-    if (idx === S.drawFromIdx) S.drawFromIdx = null;
-    else if (idx < S.drawFromIdx) S.drawFromIdx--;
-    if (S.drawFromIdx !== null && S.drawFromIdx >= S.points.length) S.drawFromIdx = S.points.length - 1;
-  }
   maybeAutoUnfold();
 }
 
