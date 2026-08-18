@@ -507,11 +507,22 @@ function drawDrawCanvas() {
     const { cx, cy } = w2c(pt.x, pt.y);
     const hov = S.hoveredPt === i;
     const isF = i === 0, isL = i === S.points.length - 1;
-    if (hov) {
+    const isActive = S.toolMode === 'draw' && S.drawFromIdx === i;
+    if (hov || isActive) {
       drawCtx.beginPath();
-      drawCtx.arc(cx, cy, 14, 0, Math.PI * 2);
-      drawCtx.fillStyle = isF ? '#22c55e15' : '#22c55e15';
+      drawCtx.arc(cx, cy, hov ? 14 : 12, 0, Math.PI * 2);
+      drawCtx.fillStyle = isActive ? '#3b82f620' : '#22c55e15';
       drawCtx.fill();
+    }
+    // Кольцо вокруг активной точки
+    if (isActive) {
+      drawCtx.beginPath();
+      drawCtx.arc(cx, cy, 10, 0, Math.PI * 2);
+      drawCtx.strokeStyle = '#3b82f6';
+      drawCtx.lineWidth = 2;
+      drawCtx.setLineDash([3, 2]);
+      drawCtx.stroke();
+      drawCtx.setLineDash([]);
     }
     drawCtx.beginPath();
     drawCtx.arc(cx, cy, hov ? 8 : 6, 0, Math.PI * 2);
@@ -592,7 +603,10 @@ function drawDrawCanvas() {
 
   // Rubber band
   if (S.toolMode === 'draw' && S.points.length > 0 && S.mouseWorld) {
-    const lp = S.points[S.points.length - 1];
+    const actIdx = (S.drawFromIdx != null && S.drawFromIdx >= 0 && S.drawFromIdx < S.points.length)
+      ? S.drawFromIdx
+      : S.points.length - 1;
+    const lp = S.points[actIdx];
     const from = w2c(lp.x, lp.y);
     const tw = S.snapToGrid ? snapPoint(S.mouseWorld) : S.mouseWorld;
     const to = w2c(tw.x, tw.y);
@@ -1436,20 +1450,25 @@ drawCanvas.addEventListener('mousedown', e => {
   if (e.button === 0 && S.toolMode === 'draw') {
     const w = c2w(cx, cy);
     let p = S.snapToGrid ? snapPoint(w) : w;
-    // Snap to first point to close
-    if (S.points.length >= 3 && isNearFirst(cx, cy)) {
-      addPoint({ x: S.points[0].x, y: S.points[0].y });
-    } else {
-      // Snap to existing point
-      let snapped = false;
-      for (let i = 0; i < S.points.length; i++) {
-        const pp = w2c(S.points[i].x, S.points[i].y);
-        if (Math.sqrt((pp.cx - cx) ** 2 + (pp.cy - cy) ** 2) < 12) {
-          p = { x: S.points[i].x, y: S.points[i].y };
-          snapped = true;
-          break;
-        }
+    // Проверяем клик по существующей точке
+    let hitIdx = -1;
+    for (let i = 0; i < S.points.length; i++) {
+      const pp = w2c(S.points[i].x, S.points[i].y);
+      if (Math.sqrt((pp.cx - cx) ** 2 + (pp.cy - cy) ** 2) < 12) {
+        hitIdx = i;
+        break;
       }
+    }
+    if (hitIdx >= 0) {
+      // Клик по первой точке при рисовании от последней → замыкание контура
+      if (hitIdx === 0 && S.points.length >= 3 && (S.drawFromIdx === null || S.drawFromIdx === S.points.length - 1)) {
+        addPoint({ x: S.points[0].x, y: S.points[0].y });
+      } else {
+        // Выбираем эту точку как активную для продолжения рисования от неё
+        S.drawFromIdx = hitIdx;
+      }
+    } else {
+      // Обычный клик — добавляем точку после активной
       addPoint(p);
     }
     renderAll();

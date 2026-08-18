@@ -1,7 +1,7 @@
 // ==================== STATE ====================
 const S = {
   points: [],
-  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 2, kFactor: 0.42, width: 100, partNumber: '' },
+  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 100, partNumber: '' },
   hems: [], // [{segIndex, height, side:'left'|'right'}]
   hemEditing: null, // {segIndex} when hem dialog is open
   hemHoveredSeg: -1,
@@ -26,7 +26,8 @@ const S = {
   dxfOpts: { layers: { outline: true, bend: true, dimension: true, text: true, info: true, tick: true } },
   mouseWorld: null,
   hoveredPt: -1,
-  snapEndpoint: -1
+  snapEndpoint: -1,
+  drawFromIdx: null // индекс точки, от которой продолжается рисование (null = последняя)
 };
 
 // ==================== STATE HELPERS ====================
@@ -60,7 +61,11 @@ function snapPoint(p) {
 function addPoint(p) {
   S.undoHistory = [...S.undoHistory, cloneState()];
   if (S.undoHistory.length > 50) S.undoHistory.shift();
-  S.points = [...S.points, p];
+  // Вставка после активной точки, если она выбрана (иначе — в конец)
+  const insertIdx = S.drawFromIdx != null && S.drawFromIdx >= 0 && S.drawFromIdx < S.points.length
+    ? S.drawFromIdx + 1
+    : S.points.length;
+  S.points = [...S.points.slice(0, insertIdx), p, ...S.points.slice(insertIdx)];
   S.redoHistory = [];
   maybeAutoUnfold();
 }
@@ -70,6 +75,12 @@ function removePoint(idx) {
   if (S.undoHistory.length > 50) S.undoHistory.shift();
   S.points = S.points.filter((_, i) => i !== idx);
   S.redoHistory = [];
+  // Активная точка могла сместиться или удалиться
+  if (S.drawFromIdx !== null) {
+    if (idx === S.drawFromIdx) S.drawFromIdx = null;
+    else if (idx < S.drawFromIdx) S.drawFromIdx--;
+    if (S.drawFromIdx !== null && S.drawFromIdx >= S.points.length) S.drawFromIdx = S.points.length - 1;
+  }
   maybeAutoUnfold();
 }
 
@@ -81,6 +92,7 @@ function clearDrawing() {
   S.hems = [];
   S.hemEditing = null;
   S.hemHoveredSeg = -1;
+  S.drawFromIdx = null;
   S.unfoldResult = null;
   if (typeof view3dUserZoomed !== 'undefined') view3dUserZoomed = false;
   localStorage.removeItem('sheet-metal-project');
@@ -95,6 +107,7 @@ function doUndo() {
   if (S.redoHistory.length > 50) S.redoHistory.shift();
   S.points = prev.points;
   S.hems = prev.hems || [];
+  if (S.drawFromIdx !== null && S.drawFromIdx >= S.points.length) S.drawFromIdx = S.points.length - 1;
   maybeAutoUnfold();
   renderAll();
 }
@@ -107,6 +120,7 @@ function doRedo() {
   if (S.undoHistory.length > 50) S.undoHistory.shift();
   S.points = next.points;
   S.hems = next.hems || [];
+  if (S.drawFromIdx !== null && S.drawFromIdx >= S.points.length) S.drawFromIdx = S.points.length - 1;
   maybeAutoUnfold();
   renderAll();
 }

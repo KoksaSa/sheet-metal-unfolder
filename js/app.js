@@ -34,11 +34,19 @@ document.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
   switch (key) {
     case 'd': S.toolMode = 'draw'; renderAll(); break;
-    case 'v': S.toolMode = 'select'; renderAll(); break;
-    case 'e': S.toolMode = 'erase'; renderAll(); break;
-    case 'h': S.toolMode = 'hem'; renderAll(); break;
-    case 'm': S.toolMode = 'measure'; measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
+    case 'v': S.toolMode = 'select'; S.drawFromIdx = null; renderAll(); break;
+    case 'e': S.toolMode = 'erase'; S.drawFromIdx = null; renderAll(); break;
+    case 'h': S.toolMode = 'hem'; S.drawFromIdx = null; renderAll(); break;
+    case 'm': S.toolMode = 'measure'; S.drawFromIdx = null; measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
     case 'f': S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 }; drawDrawCanvas(); break;
+    case 'escape':
+      // Сброс активной точки рисования
+      if (S.toolMode === 'draw' && S.drawFromIdx !== null) {
+        e.preventDefault();
+        S.drawFromIdx = null;
+        drawDrawCanvas();
+      }
+      break;
   }
 });
 

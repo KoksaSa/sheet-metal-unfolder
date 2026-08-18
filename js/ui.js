@@ -243,7 +243,7 @@ function renderToolButtons() {
   const btnInactive = 'border-gray-200 dark:border-gray-700 hover:bg-green-50 hover:text-green-700 dark:hover:bg-green-950/30';
   c.innerHTML = tools.map(tl => {
     const active = S.toolMode === tl.mode;
-    return '<button onclick="S.toolMode=\'' + tl.mode + '\';renderAll()" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"><i data-lucide="' + tl.icon + '" class="h-3.5 w-3.5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
+    return '<button onclick="S.toolMode=\'' + tl.mode + '\';S.drawFromIdx=null;renderAll()" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"><i data-lucide="' + tl.icon + '" class="h-3.5 w-3.5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
   }).join('');
 }
 

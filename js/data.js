@@ -6,7 +6,7 @@ const METAL_TYPES = [
     densities: { 0.5: 7.85e-6, 1: 7.85e-6, 1.5: 7.85e-6, 2: 7.85e-6, 3: 7.85e-6 }
   },
   {
-    nameRu: 'Нержавеющая сталь', nameEn: 'Stainless Steel', kFactor: 0.42,
+    nameRu: 'Нержавеющая сталь', nameEn: 'Stainless Steel', kFactor: 0.5,
     defaultThickness: 0.8,
     densities: { 0.5: 7.93e-6, 1: 7.93e-6, 1.5: 7.93e-6, 2: 7.93e-6 }
   },
