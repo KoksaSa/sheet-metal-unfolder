@@ -34,48 +34,42 @@ function getMetalDensity(mtIdx, thick) {
 // ==================== BEND FEASIBILITY ====================
 /**
  * Проверка возможности гибки на выбранных матрице и пуансоне.
+ * Ключевое: пуансон не должен врезаться в кромку металла при гибке.
  * @param {object} bend - объект гиба (bendAngle в радианах)
  * @param {number} segBeforeLen - длина полки до гиба, мм
  * @param {number} segAfterLen - длина полки после гиба, мм
- * @param {number} thickness - толщина материала, мм
  * @param {number} bendRadius - радиус гиба, мм
  * @param {object} die - матрица {vWidth, maxAngle}
  * @param {object} punch - пуансон {radius, maxAngle}
  * @returns {{ok: boolean, problems: string[]}} результат проверки
  */
-function checkBendFeasibility(bend, segBeforeLen, segAfterLen, thickness, bendRadius, die, punch) {
+function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch) {
   const problems = [];
   const bendDeg = bend.bendAngle * 180 / Math.PI;
 
-  // 1. Ширина канавки матрицы относительно толщины (V ≈ 6–12 × T)
-  const minV = thickness * 5;
-  const maxV = thickness * 12;
-  if (die.vWidth < minV) {
-    problems.push('V = ' + die.vWidth + ' мм < 5×T = ' + minV.toFixed(1) + ' мм (матрица узкая для ' + thickness + ' мм)');
-  }
-  if (die.vWidth > maxV) {
-    problems.push('V = ' + die.vWidth + ' мм > 12×T = ' + maxV.toFixed(1) + ' мм (матрица широкая для ' + thickness + ' мм)');
+  // 1. Угол гиба должен укладываться в возможности инструмента,
+  //    иначе пуансон врежется в кромку металла при гибке
+  const maxBendAngle = Math.min(punch.maxAngle, die.maxAngle);
+  if (bendDeg > maxBendAngle) {
+    problems.push('Угол гиба ' + bendDeg.toFixed(0) + '° больше максимального ' + maxBendAngle + '° для этого инструмента — пуансон врежется в кромку');
   }
 
   // 2. Радиус пуансона не должен превышать радиус гиба
   if (punch.radius > bendRadius + 0.2) {
-    problems.push('Радиус пуансона R' + punch.radius + ' > радиуса гиба R' + bendRadius.toFixed(1) + ' мм');
+    problems.push('Радиус пуансона R' + punch.radius + ' больше радиуса гиба R' + bendRadius.toFixed(1) + ' мм — пуансон не впишется в гиб');
   }
 
-  // 3. Угол гиба должен укладываться в возможности инструментов
-  const maxBendAngle = Math.min(punch.maxAngle, die.maxAngle);
-  if (bendDeg > maxBendAngle) {
-    problems.push('Угол гиба ' + bendDeg.toFixed(0) + '° > максимального ' + maxBendAngle + '°');
-  }
-
-  // 4. Минимальная длина полки для матрицы (без учёта каймы)
+  // 3. Минимальная длина полки: при короткой полке пуансон упрётся
+  //    в соседнюю кромку металла (зависит от угла гиба и ширины V)
   const half = bendDeg * Math.PI / 180 / 2;
-  const minFlange = ((die.vWidth / 2) + 2) / Math.sin(half);
-  if (segBeforeLen < minFlange) {
-    problems.push('Полка слева ' + segBeforeLen.toFixed(1) + ' мм < минимума ' + minFlange.toFixed(1) + ' мм для V' + die.vWidth);
-  }
-  if (segAfterLen < minFlange) {
-    problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм < минимума ' + minFlange.toFixed(1) + ' мм для V' + die.vWidth);
+  if (half > 0) {
+    const minFlange = ((die.vWidth / 2) + 2) / Math.sin(half);
+    if (segBeforeLen < minFlange) {
+      problems.push('Полка слева ' + segBeforeLen.toFixed(1) + ' мм меньше минимальной ' + minFlange.toFixed(1) + ' мм — пуансон врежется в кромку');
+    }
+    if (segAfterLen < minFlange) {
+      problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм меньше минимальной ' + minFlange.toFixed(1) + ' мм — пуансон врежется в кромку');
+    }
   }
 
   return { ok: problems.length === 0, problems };
@@ -150,7 +144,7 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
       if (nextBend) afterLen -= nextBend.tangentDistance;
       beforeLen = Math.max(0, beforeLen);
       afterLen = Math.max(0, afterLen);
-      const result = checkBendFeasibility(b, beforeLen, afterLen, thickness, bendRadius, die, punch);
+      const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch);
       b.feasible = result.ok;
       b.problems = result.problems;
       b.flangeBefore = beforeLen;
