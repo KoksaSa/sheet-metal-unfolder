@@ -6,7 +6,31 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.preventDefault(); cancelHem(); return; }
     return; // Don't process other shortcuts while hem dialog is open
   }
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+  const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA';
+  const mod = e.ctrlKey || e.metaKey;
+
+  // Undo / Redo работают и в полях ввода (как в браузере), и вне их
+  if (mod && e.code === 'KeyZ') {
+    e.preventDefault();
+    if (e.shiftKey) { redoMetal(); renderAll(); }
+    else doUndo();
+    return;
+  }
+  if (mod && e.code === 'KeyY') {
+    e.preventDefault();
+    if (e.shiftKey) { undoMetal(); renderAll(); }
+    else doRedo();
+    return;
+  }
+
+  if (isInput) return;
+  if (mod && e.code === 'KeyS') {
+    e.preventDefault();
+    saveProject();
+    return;
+  }
+
   const key = e.key.toLowerCase();
   switch (key) {
     case 'd': S.toolMode = 'draw'; renderAll(); break;
@@ -15,26 +39,6 @@ document.addEventListener('keydown', e => {
     case 'h': S.toolMode = 'hem'; renderAll(); break;
     case 'm': S.toolMode = 'measure'; measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
     case 'f': S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 }; drawDrawCanvas(); break;
-    case 'y':
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        if (e.shiftKey) { redoMetal(); renderAll(); }
-        else doRedo();
-      }
-      break;
-    case 'z':
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        if (e.shiftKey) { undoMetal(); renderAll(); }
-        else doUndo();
-      }
-      break;
-    case 's':
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        saveProject();
-      }
-      break;
   }
 });
 

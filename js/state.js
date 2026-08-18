@@ -1,7 +1,7 @@
 // ==================== STATE ====================
 const S = {
   points: [],
-  metal: { metalTypeIndex: 0, thickness: 1.5, bendRadius: 2, kFactor: 0.38, width: 100, partNumber: '' },
+  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 2, kFactor: 0.42, width: 100, partNumber: '' },
   hems: [], // [{segIndex, height, side:'left'|'right'}]
   hemEditing: null, // {segIndex} when hem dialog is open
   hemHoveredSeg: -1,
@@ -84,6 +84,7 @@ function clearDrawing() {
   S.unfoldResult = null;
   if (typeof view3dUserZoomed !== 'undefined') view3dUserZoomed = false;
   localStorage.removeItem('sheet-metal-project');
+  renderAll();
 }
 
 function doUndo() {
