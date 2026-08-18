@@ -573,23 +573,24 @@ function drawDrawCanvas() {
 
   // Close indicator
   if ((S.toolMode === 'draw' || S.toolMode === 'select') && S.points.length >= 3 && S.mouseWorld) {
-    // Рисуем от конца → замыкание на первой точке; от начала → замыкание на последней
-    const targetIdx = S.drawFromIdx === 0 ? S.points.length - 1 : 0;
-    const fc = w2c(S.points[targetIdx].x, S.points[targetIdx].y);
-    const mc = w2c(S.mouseWorld.x, S.mouseWorld.y);
-    const dd = Math.sqrt((fc.cx - mc.cx) ** 2 + (fc.cy - mc.cy) ** 2);
-    if (dd < 15) {
-      const alpha = .5 + .3 * Math.sin(Date.now() / 200);
-      drawCtx.save();
-      drawCtx.globalAlpha = alpha;
-      drawCtx.strokeStyle = '#22c55e';
-      drawCtx.lineWidth = 3;
-      drawCtx.beginPath();
-      drawCtx.arc(fc.cx, fc.cy, 14, 0, Math.PI * 2);
-      drawCtx.stroke();
-      drawCtx.restore();
-      animFrame = requestAnimationFrame(drawDrawCanvas);
-      return;
+    // Индикатор замыкания: только при рисовании от конца — у первой точки (двойной клик)
+    if (S.drawFromIdx !== 0) {
+      const fc = w2c(S.points[0].x, S.points[0].y);
+      const mc = w2c(S.mouseWorld.x, S.mouseWorld.y);
+      const dd = Math.sqrt((fc.cx - mc.cx) ** 2 + (fc.cy - mc.cy) ** 2);
+      if (dd < 15) {
+        const alpha = .5 + .3 * Math.sin(Date.now() / 200);
+        drawCtx.save();
+        drawCtx.globalAlpha = alpha;
+        drawCtx.strokeStyle = '#22c55e';
+        drawCtx.lineWidth = 3;
+        drawCtx.beginPath();
+        drawCtx.arc(fc.cx, fc.cy, 14, 0, Math.PI * 2);
+        drawCtx.stroke();
+        drawCtx.restore();
+        animFrame = requestAnimationFrame(drawDrawCanvas);
+        return;
+      }
     }
   }
 
@@ -1460,25 +1461,18 @@ drawCanvas.addEventListener('mousedown', e => {
         }
       }
       const lastIdx = S.points.length - 1;
-      if (hitIdx === lastIdx) {
-        if (S.drawFromIdx === 0 && S.points.length >= 3) {
-          // Замыкание контура при рисовании от первой точки
-          addPoint({ x: S.points[lastIdx].x, y: S.points[lastIdx].y });
-        } else {
-          // Клик по последней точке → обычный режим (рисуем от конца)
-          S.drawFromIdx = null;
-        }
-      } else if (hitIdx === 0) {
-        if (S.points.length >= 3 && S.drawFromIdx === null) {
-          // Замыкание контура: клик по первой точке при рисовании от конца
-          addPoint({ x: S.points[0].x, y: S.points[0].y });
-        } else {
-          // Рисуем от первой точки (добавляем отгибы в начало)
-          S.drawFromIdx = 0;
-        }
-      }
-      // Клик по внутренней точке — ничего не делаем (рисовать от неё нельзя)
-      if (hitIdx >= 0) {
+      if (hitIdx === 0) {
+        // Клик по первой точке → начинаем рисовать от неё (добавление в начало)
+        S.drawFromIdx = 0;
+        renderAll();
+        return;
+      } else if (hitIdx === lastIdx && lastIdx > 0) {
+        // Клик по последней точке → рисуем от конца контура
+        S.drawFromIdx = null;
+        renderAll();
+        return;
+      } else if (hitIdx >= 0) {
+        // Внутренняя точка — рисовать от неё нельзя
         renderAll();
         return;
       }
@@ -1514,6 +1508,19 @@ drawCanvas.addEventListener('mousedown', e => {
     if (segIdx >= 0) {
       showHemDialog(segIdx);
     }
+  }
+});
+
+// Замыкание контура двойным кликом по первой точке
+drawCanvas.addEventListener('dblclick', e => {
+  if (S.toolMode !== 'draw' || S.points.length < 3) return;
+  const r = drawCanvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  const p0 = w2c(S.points[0].x, S.points[0].y);
+  if (Math.sqrt((p0.cx - cx) ** 2 + (p0.cy - cy) ** 2) < 18) {
+    e.preventDefault();
+    closeContour();
+    renderAll();
   }
 });
 

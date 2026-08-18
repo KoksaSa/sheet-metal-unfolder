@@ -83,6 +83,18 @@ function removePoint(idx) {
   maybeAutoUnfold();
 }
 
+// Замыкание контура: добавляем дубликат первой точки в конец
+function closeContour() {
+  if (S.points.length < 3) return;
+  S.undoHistory = [...S.undoHistory, cloneState()];
+  if (S.undoHistory.length > 50) S.undoHistory.shift();
+  const fp = S.points[0];
+  S.points = [...S.points, { x: fp.x, y: fp.y }];
+  S.redoHistory = [];
+  S.drawFromIdx = null;
+  maybeAutoUnfold();
+}
+
 function clearDrawing() {
   S.undoHistory = [...S.undoHistory, cloneState()];
   if (S.undoHistory.length > 50) S.undoHistory.shift();
