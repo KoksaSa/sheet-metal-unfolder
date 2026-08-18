@@ -388,6 +388,11 @@ function drawDrawCanvas() {
       }
 
       // 2. Дуги углов + подписи углов
+      // Карта вершин: vertexIndex -> bend объект с полем feasible
+      const bendFeasMap = {};
+      if (S.unfoldResult && S.unfoldResult.bendInfos) {
+        S.unfoldResult.bendInfos.forEach(b => { bendFeasMap[b.vertexIndex] = b; });
+      }
       for (let i = 1; i < S.points.length - 1; i++) {
         const prev = S.points[i - 1], curr = S.points[i], next = S.points[i + 1];
         const aIn = Math.atan2(curr.y - prev.y, curr.x - prev.x);
@@ -399,11 +404,21 @@ function drawDrawCanvas() {
         if (ba < 5 * Math.PI / 180 || ba > Math.PI - 5 * Math.PI / 180) continue;
         const p = w2c(curr.x, curr.y);
         const ar = 18;
+        const bInfo = bendFeasMap[i];
+        const infeasible = bInfo && bInfo.feasible === false;
         drawCtx.beginPath();
         drawCtx.arc(p.cx, p.cy, ar, -aIn, -aOut, def > 0);
-        drawCtx.strokeStyle = isDark ? '#fbbf24' : '#f59e0b';
-        drawCtx.lineWidth = 1.5;
+        drawCtx.strokeStyle = infeasible ? '#ef4444' : (isDark ? '#fbbf24' : '#f59e0b');
+        drawCtx.lineWidth = infeasible ? 3 : 1.5;
         drawCtx.stroke();
+        // Красный ореол вокруг невозможного гиба
+        if (infeasible) {
+          drawCtx.beginPath();
+          drawCtx.arc(p.cx, p.cy, ar + 4, 0, Math.PI * 2);
+          drawCtx.strokeStyle = 'rgba(239,68,68,0.3)';
+          drawCtx.lineWidth = 2;
+          drawCtx.stroke();
+        }
         const ccw = def > 0;
         const sweep = ccw
           ? ((-aIn - (-aOut)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
@@ -431,11 +446,11 @@ function drawDrawCanvas() {
         let chosen = null;
         for (const c of cands) {
           if (c.x < 8 || c.x > w - 8 || c.y < 8 || c.y > h - 8) continue;
-          const cand = { type: 'angle', text: angleText, x: c.x, y: c.y, w: atw, h: 14, pcx: p.cx, pcy: p.cy, baseR: 28 };
+          const cand = { type: 'angle', text: angleText, x: c.x, y: c.y, w: atw, h: 14, pcx: p.cx, pcy: p.cy, baseR: 28, infeasible: !!infeasible };
           if (!placed.some(q => rectsOverlap(q, cand))) { chosen = cand; break; }
         }
         if (!chosen) {
-          chosen = { type: 'angle', text: angleText, x: p.cx + Math.cos(mid) * 28, y: p.cy + Math.sin(mid) * 28, w: atw, h: 14, pcx: p.cx, pcy: p.cy, baseR: 28 };
+          chosen = { type: 'angle', text: angleText, x: p.cx + Math.cos(mid) * 28, y: p.cy + Math.sin(mid) * 28, w: atw, h: 14, pcx: p.cx, pcy: p.cy, baseR: 28, infeasible: !!infeasible };
         }
         placed.push(chosen);
         dimLabels.push(chosen);
@@ -487,9 +502,13 @@ function drawDrawCanvas() {
             drawCtx.setLineDash([]);
           }
           drawCtx.fillStyle = isDark ? '#fbbf24' : '#d97706';
+          if (label.infeasible) {
+            drawCtx.fillStyle = '#ef4444';
+            // Добавляем значок ⚠ перед углом при невозможности
+          }
           drawCtx.font = 'bold 9px sans-serif';
           drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
-          drawCtx.fillText(label.text, label.x, label.y);
+          drawCtx.fillText((label.infeasible ? '⚠ ' : '') + label.text, label.x, label.y);
         }
         drawCtx.restore();
       });
@@ -776,16 +795,17 @@ function drawUnfoldCanvas() {
         unfoldCtx.fillText(el.length.toFixed(1), ox + mx * sc, oy + W * sc / 2);
       }
     } else {
-      unfoldCtx.fillStyle = isDark ? '#7c2d1280' : '#fed7aa';
+      const infeasible = el.type === 'bend' && el.feasible === false;
+      unfoldCtx.fillStyle = infeasible ? (isDark ? '#7f1d1d80' : '#fee2e2') : (isDark ? '#7c2d1280' : '#fed7aa');
       unfoldCtx.fillRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
-      unfoldCtx.strokeStyle = '#ea580c33';
-      unfoldCtx.lineWidth = .5;
+      unfoldCtx.strokeStyle = infeasible ? '#ef4444' : '#ea580c33';
+      unfoldCtx.lineWidth = infeasible ? 2 : .5;
       unfoldCtx.strokeRect(ox + el.startX * sc, oy, (el.endX - el.startX) * sc, W * sc);
       const mx = (el.startX + el.endX) / 2;
-      unfoldCtx.fillStyle = isDark ? '#fb923c' : '#c2410c';
-      unfoldCtx.font = '9px sans-serif';
+      unfoldCtx.fillStyle = infeasible ? '#ef4444' : (isDark ? '#fb923c' : '#c2410c');
+      unfoldCtx.font = infeasible ? 'bold 9px sans-serif' : '9px sans-serif';
       unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
-      unfoldCtx.fillText((el.angle * 180 / Math.PI).toFixed(0) + '°', ox + mx * sc, oy + W * sc / 2);
+      unfoldCtx.fillText((infeasible ? '\u26a0 ' : '') + (el.angle * 180 / Math.PI).toFixed(0) + '\u00b0', ox + mx * sc, oy + W * sc / 2);
       bc++;
     }
     unfoldCtx.restore();
@@ -817,6 +837,8 @@ function drawUnfoldCanvas() {
   res.bendLinePositions.forEach((xp, idx) => {
     const after = isAnim && idx > S.animBendIdx;
     const curr = isAnim && idx === S.animBendIdx;
+    const bendEl = res.bendInfos[idx];
+    const infeasible = bendEl && bendEl.feasible === false;
     unfoldCtx.save();
     if (after) unfoldCtx.globalAlpha = .3;
     if (curr) {
@@ -824,6 +846,10 @@ function drawUnfoldCanvas() {
       unfoldCtx.lineWidth = 3;
       unfoldCtx.shadowColor = isDark ? '#fbbf24' : '#f59e0b';
       unfoldCtx.shadowBlur = 12;
+      unfoldCtx.setLineDash([]);
+    } else if (infeasible) {
+      unfoldCtx.strokeStyle = '#ef4444';
+      unfoldCtx.lineWidth = 3;
       unfoldCtx.setLineDash([]);
     } else {
       unfoldCtx.strokeStyle = isDark ? '#fb923c' : '#ea580c';
@@ -848,7 +874,9 @@ function drawUnfoldCanvas() {
     unfoldCtx.arc(nx, ny, nr, 0, Math.PI * 2);
     unfoldCtx.fillStyle = curr
       ? (isDark ? '#fbbf24' : '#f59e0b')
-      : (isDark ? '#ea580c' : '#f97316');
+      : infeasible
+        ? '#ef4444'
+        : (isDark ? '#ea580c' : '#f97316');
     unfoldCtx.fill();
     unfoldCtx.strokeStyle = isDark ? '#0a0a0a' : '#fff';
     unfoldCtx.lineWidth = 1.5;

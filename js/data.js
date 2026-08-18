@@ -39,6 +39,34 @@ const METAL_TYPES = [
 
 const THICKNESS_OPTIONS = [0.3, 0.5, 0.8, 1, 1.2, 1.5, 2, 2.5, 3, 4, 5];
 
+// ==================== BENDING TOOLS (MATRITSY I PUNSONY) ====================
+// V-матрицы (die): ширина канавки V, максимальный угол гиба
+const DIES = [
+  { id: 'V8', nameRu: 'V8', nameEn: 'V8', vWidth: 8, maxAngle: 140 },
+  { id: 'V10', nameRu: 'V10', nameEn: 'V10', vWidth: 10, maxAngle: 140 },
+  { id: 'V12', nameRu: 'V12', nameEn: 'V12', vWidth: 12, maxAngle: 140 },
+  { id: 'V16', nameRu: 'V16', nameEn: 'V16', vWidth: 16, maxAngle: 140 },
+  { id: 'V20', nameRu: 'V20', nameEn: 'V20', vWidth: 20, maxAngle: 140 },
+  { id: 'V25', nameRu: 'V25', nameEn: 'V25', vWidth: 25, maxAngle: 140 },
+  { id: 'V32', nameRu: 'V32', nameEn: 'V32', vWidth: 32, maxAngle: 140 },
+  { id: 'V40', nameRu: 'V40', nameEn: 'V40', vWidth: 40, maxAngle: 140 },
+  { id: 'V50', nameRu: 'V50', nameEn: 'V50', vWidth: 50, maxAngle: 140 },
+  { id: 'V63', nameRu: 'V63', nameEn: 'V63', vWidth: 63, maxAngle: 140 },
+  { id: 'V80', nameRu: 'V80', nameEn: 'V80', vWidth: 80, maxAngle: 140 }
+];
+
+// Пуансоны (punch): радиус вершины, максимальный угол гиба
+const PUNCHES = [
+  { id: 'R0.5', nameRu: 'R0.5', nameEn: 'R0.5', radius: 0.5, maxAngle: 90 },
+  { id: 'R1', nameRu: 'R1', nameEn: 'R1', radius: 1, maxAngle: 90 },
+  { id: 'R1.5', nameRu: 'R1.5', nameEn: 'R1.5', radius: 1.5, maxAngle: 90 },
+  { id: 'R2', nameRu: 'R2', nameEn: 'R2', radius: 2, maxAngle: 90 },
+  { id: 'R3', nameRu: 'R3', nameEn: 'R3', radius: 3, maxAngle: 90 },
+  { id: 'R5', nameRu: 'R5', nameEn: 'R5', radius: 5, maxAngle: 90 },
+  { id: 'R8', nameRu: 'R8', nameEn: 'R8', radius: 8, maxAngle: 90 },
+  { id: 'R10', nameRu: 'R10', nameEn: 'R10', radius: 10, maxAngle: 90 }
+];
+
 const PRESET_SHAPES = [
   { nameRu: 'L-образный', nameEn: 'L-shape', icon: 'L', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -60 }] },
   { nameRu: 'U-образный', nameEn: 'U-shape', icon: 'U', points: [{ x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: -80 }, { x: 0, y: -80 }] },

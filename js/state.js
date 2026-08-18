@@ -1,7 +1,7 @@
 // ==================== STATE ====================
 const S = {
   points: [],
-  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 100, partNumber: '' },
+  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 100, partNumber: '', dieIndex: 0, punchIndex: 1 },
   hems: [], // [{segIndex, height, side:'left'|'right'}]
   hemEditing: null, // {segIndex} when hem dialog is open
   hemHoveredSeg: -1,
@@ -167,7 +167,9 @@ function selectMetalType(idx) {
 
 function maybeAutoUnfold() {
   if (!S.autoUnfold || S.points.length < 2 || S.metal.width <= 0) return;
-  S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width);
+  const die = DIES[S.metal.dieIndex] || DIES[0];
+  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width, die, punch);
   // Reset unfold zoom to auto-fit when profile changes
   if (typeof ufManualZoom !== 'undefined') ufManualZoom = null;
 }
@@ -177,7 +179,9 @@ function doUnfold() {
     toast(S.lang === 'ru' ? 'Ширина должна быть больше 0' : 'Width must be > 0', 'error');
     return;
   }
-  S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width);
+  const die = DIES[S.metal.dieIndex] || DIES[0];
+  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width, die, punch);
 }
 
 // ==================== TOAST ====================

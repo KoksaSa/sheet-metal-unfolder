@@ -266,6 +266,22 @@ function renderMetalParams() {
   h += '</select></div>';
   // Bend radius
   h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('bendRadius') + ' <span class="text-gray-500">(mm)</span></label><input type="number" min="0.1" max="100" step="0.5" value="' + S.metal.bendRadius + '" onchange="const v=parseFloat(this.value);if(!isNaN(v)&&v>0){setMetalWithUndo({bendRadius:v});doUnfold();renderAll()}" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2"></div>';
+  // Die & Punch selection
+  const die = DIES[S.metal.dieIndex] || DIES[0];
+  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  h += '<div class="rounded-md border border-gray-200 dark:border-gray-700 p-2 space-y-2"><div class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('bendTool') + '</div>';
+  h += '<div class="grid grid-cols-2 gap-2">';
+  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('dieSelect') + '</label><select onchange="setMetalWithUndo({dieIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
+  DIES.forEach((d, i) => {
+    h += '<option value="' + i + '"' + (i === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameEn : d.nameRu) + '</option>';
+  });
+  h += '</select></div>';
+  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="setMetalWithUndo({punchIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
+  PUNCHES.forEach((p, i) => {
+    h += '<option value="' + i + '"' + (i === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameEn : p.nameRu) + '</option>';
+  });
+  h += '</select></div>';
+  h += '</div></div>';
   // K-factor
   h += '<div class="space-y-1"><div class="flex items-center justify-between"><label class="text-xs font-medium" title="' + t('kFactorTooltip') + '">' + t('kFactor') + '</label><span id="kf-display" class="text-xs font-mono text-gray-500 tabular-nums">' + S.metal.kFactor.toFixed(2) + '</span></div><input type="range" min="0.1" max="0.7" step="0.01" value="' + S.metal.kFactor + '" oninput="setMetalWithUndo({kFactor:Number(this.value)});document.getElementById(\'kf-display\').textContent=Number(this.value).toFixed(2)" class="w-full"></div>';
   // Width
@@ -478,6 +494,8 @@ function renderUnfoldInfo() {
   const wt = calcWeight(area, S.metal.thickness, S.metal.metalTypeIndex);
   const fmtW = wt < .001 ? (wt * 1000).toFixed(1) + ' ' + t('weightG') : wt < 1 ? (wt * 1000).toFixed(0) + ' ' + t('weightG') : wt.toFixed(3) + ' ' + t('weightKg');
   const density = getMetalDensity(S.metal.metalTypeIndex, S.metal.thickness) * 1e9;
+  const die = DIES[S.metal.dieIndex] || DIES[0];
+  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
   // Short flanges
   const minFlange = S.metal.bendRadius * 2 + S.metal.thickness;
   let shortCount = 0;
@@ -516,6 +534,18 @@ function renderUnfoldInfo() {
   if (shortCount > 0) {
     h += '<div class="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 p-2.5"><div class="flex items-start gap-2"><i data-lucide="triangle-alert" class="h-4 w-4 text-red-500 shrink-0 mt-0.5"></i><div class="flex-1"><p class="text-[11px] font-semibold text-red-700 dark:text-red-300">' + t('shortFlanges') + '</p><p class="text-[10px] text-red-600/80 dark:text-red-400/70 mt-0.5">' + shortCount + ' ' + t('flangesShorter') + ' ' + minFlange.toFixed(1) + ' mm</p></div></div></div>';
   }
+  // Bend feasibility warning
+  const badBends = (res.bendInfos || []).filter(b => b.feasible === false);
+  if (badBends.length > 0) {
+    const dieName = S.lang === 'en' ? die.nameEn : die.nameRu;
+    const punchName = S.lang === 'en' ? punch.nameEn : punch.nameRu;
+    h += '<div class="rounded-lg bg-red-50 dark:bg-red-950/40 border-2 border-red-400/60 dark:border-red-700/60 p-2.5"><div class="flex items-start gap-2"><i data-lucide="triangle-alert" class="h-4 w-4 text-red-500 shrink-0 mt-0.5"></i><div class="flex-1"><p class="text-[11px] font-semibold text-red-700 dark:text-red-300">' + t('bendNotFeasible') + '</p><p class="text-[10px] text-red-600/80 dark:text-red-400/70 mt-0.5">' + dieName + ' / ' + punchName + '</p></div></div><div class="mt-1.5 space-y-1">';
+    badBends.forEach(b => {
+      const bn = res.bendInfos.indexOf(b) + 1;
+      h += '<div class="text-[10px] text-red-700 dark:text-red-400"><b>' + t('bend') + ' ' + bn + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b><div class="pl-2">' + b.problems.join('<br>— ') + '</div></div>';
+    });
+    h += '</div></div>';
+  }
   // Segments toggle
   h += '<button onclick="S.showSegments=!S.showSegments;renderUnfoldInfo()" class="w-full flex items-center justify-between text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 py-1"><span class="flex items-center gap-1"><i data-lucide="table-properties" class="h-3 w-3"></i>' + t('segmentsTitle') + '</span><span class="transition-transform duration-200 ' + (S.showSegments ? 'rotate-180' : '') + '">\u25bc</span></button>';
   if (S.showSegments) {
@@ -524,12 +554,17 @@ function renderUnfoldInfo() {
     res.elements.forEach((el, i) => {
       const isS = el.type === 'straight';
       const isHem = el.type === 'hem';
+      const isBend = el.type === 'bend';
+      const badBend = isBend && el.feasible === false;
       const len = isS ? el.length : (isHem ? el.length : el.bendAllowance);
       cum += len;
       const isShort = isS && len > 0 && len < minFlange;
-      h += '<tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-700/50 ' + (isS ? '' : (isHem ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'bg-orange-50/50 dark:bg-orange-950/20')) + (isShort ? ' bg-red-50/50 dark:bg-red-950/30' : '') + '"><td class="px-2 py-1 text-gray-500 font-mono">' + (i + 1) + '</td>';
-      h += '<td class="px-2 py-1"><span class="' + (isS ? 'text-green-700 dark:text-green-400' : (isHem ? 'text-blue-600 dark:text-blue-400' : 'text-orange-600 dark:text-orange-400 font-medium')) + '">' + (isS ? t('segStraight') : (isHem ? t('hem') + (el.edge === 'bottom' ? '↓' : '↑') : t('segBend'))) + '</span>';
-      if (!isS && !isHem) h += '<span class="ml-1 font-mono text-orange-500">' + ((el.angle * 180 / Math.PI).toFixed(0)) + '°</span>';
+      let rowBg = isS ? '' : (isHem ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'bg-orange-50/50 dark:bg-orange-950/20');
+      if (badBend) rowBg = 'bg-red-50/70 dark:bg-red-950/40';
+      if (isShort) rowBg += ' bg-red-50/50 dark:bg-red-950/30';
+      h += '<tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-700/50 ' + rowBg + '"><td class="px-2 py-1 text-gray-500 font-mono">' + (i + 1) + '</td>';
+      h += '<td class="px-2 py-1"><span class="' + (isS ? 'text-green-700 dark:text-green-400' : (isHem ? 'text-blue-600 dark:text-blue-400' : badBend ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-orange-600 dark:text-orange-400 font-medium')) + '">' + (isS ? t('segStraight') : (isHem ? t('hem') + (el.edge === 'bottom' ? '↓' : '↑') : (badBend ? '\u26a0 ' : '') + t('segBend'))) + '</span>';
+      if (!isS && !isHem) h += '<span class="ml-1 font-mono ' + (badBend ? 'text-red-500' : 'text-orange-500') + '">' + ((el.angle * 180 / Math.PI).toFixed(0)) + '°</span>';
       if (isShort) h += '<span class="ml-1 text-red-500" title="' + t('minFlangeWarning') + minFlange.toFixed(1) + ' mm">\u26a0</span>';
       h += '</td><td class="px-2 py-1 text-right font-mono tabular-nums">' + len.toFixed(2) + '</td><td class="px-2 py-1 text-right font-mono tabular-nums text-gray-500 hidden lg:table-cell">' + cum.toFixed(1) + '</td></tr>';
     });
@@ -539,7 +574,8 @@ function renderUnfoldInfo() {
   if (res.bendInfos.length > 0) {
     h += '<div class="space-y-1 mt-2"><p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">' + t('bendDetails') + '</p><div class="max-h-32 overflow-y-auto space-y-0.5">';
     res.bendInfos.forEach((b, i) => {
-      h += '<div class="flex items-center justify-between text-[10px] bg-gray-50 dark:bg-gray-700/20 rounded px-2 py-1"><span class="text-gray-500">' + t('bend') + (i + 1) + '</span><span class="text-orange-600 dark:text-orange-400 font-mono tabular-nums">' + (b.bendAngle * 180 / Math.PI).toFixed(1) + '°</span><span class="text-gray-500 font-mono tabular-nums">' + t('ba') + b.bendAllowance.toFixed(2) + '</span></div>';
+      const bad = b.feasible === false;
+      h += '<div class="flex items-center justify-between text-[10px] rounded px-2 py-1 ' + (bad ? 'bg-red-50 dark:bg-red-950/30 border border-red-300/50' : 'bg-gray-50 dark:bg-gray-700/20') + '"><span class="text-gray-500">' + t('bend') + (i + 1) + (bad ? ' \u26a0' : '') + '</span><span class="' + (bad ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400') + ' font-mono tabular-nums">' + (b.bendAngle * 180 / Math.PI).toFixed(1) + '°</span><span class="text-gray-500 font-mono tabular-nums">' + t('ba') + b.bendAllowance.toFixed(2) + '</span></div>';
     });
     h += '</div></div>';
   }
@@ -567,6 +603,10 @@ function generateDrawing() {
   const res = S.unfoldResult;
   const mt = METAL_TYPES[S.metal.metalTypeIndex];
   const mtName = S.lang === 'en' ? mt.nameEn : mt.nameRu;
+  // Невозможные гибы
+  const badBends = (res.bendInfos || []).filter(b => b.feasible === false);
+  const die = DIES[S.metal.dieIndex] || DIES[0];
+  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
   const L = res.totalLength, W = res.width;
   const area = L * W;
   const wt = calcWeight(area, S.metal.thickness, S.metal.metalTypeIndex);
@@ -675,6 +715,9 @@ function generateDrawing() {
     }
 
     // Bend angles on profile
+    // Карта вершин: vertexIndex -> bend (с полем feasible)
+    const bendFeasMap = {};
+    if (res.bendInfos) res.bendInfos.forEach(b => { bendFeasMap[b.vertexIndex] = b; });
     for (let i = 1; i < S.points.length - 1; i++) {
       const pp = p2d(S.points[i - 1].x, S.points[i - 1].y);
       const pc = p2d(S.points[i].x, S.points[i].y);
@@ -685,15 +728,19 @@ function generateDrawing() {
       if (ba < 5 * Math.PI / 180) continue;
       const arcR = Math.min(18, pRangeX * pScale * 0.12, pRangeY * pScale * 0.12);
       const diff = normAngle(aToPrev - aToNext);
-      ctx.strokeStyle = '#c2410c'; ctx.lineWidth = 0.8;
+      const bInfo = bendFeasMap[i];
+      const infeasible = bInfo && bInfo.feasible === false;
+      ctx.strokeStyle = infeasible ? '#dc2626' : '#c2410c';
+      ctx.lineWidth = infeasible ? 2 : 0.8;
       ctx.beginPath();
       ctx.arc(pc.x, pc.y, arcR, aToNext, aToPrev, diff < 0);
       ctx.stroke();
       const midA = aToNext + diff / 2;
       const lr = arcR + 10;
-      ctx.fillStyle = '#c2410c'; ctx.font = 'bold 8px sans-serif';
+      ctx.fillStyle = infeasible ? '#dc2626' : '#c2410c';
+      ctx.font = infeasible ? 'bold 9px sans-serif' : 'bold 8px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText((ba * 180 / Math.PI).toFixed(1) + '\u00b0', pc.x + Math.cos(midA) * lr, pc.y + Math.sin(midA) * lr);
+      ctx.fillText((infeasible ? '\u26a0 ' : '') + (ba * 180 / Math.PI).toFixed(1) + '\u00b0', pc.x + Math.cos(midA) * lr, pc.y + Math.sin(midA) * lr);
     }
 
     // Hem hooks on profile
@@ -785,7 +832,10 @@ function generateDrawing() {
 
   ctx.setLineDash([4, 3]);
   res.bendLinePositions.forEach((xp, idx) => {
-    ctx.strokeStyle = '#ea580c'; ctx.lineWidth = 1.5;
+    const bInf = res.bendInfos[idx];
+    const infeasible = bInf && bInf.feasible === false;
+    ctx.strokeStyle = infeasible ? '#dc2626' : '#ea580c';
+    ctx.lineWidth = infeasible ? 2.5 : 1.5;
     ctx.beginPath();
     ctx.moveTo(uOfsX + xp * uScale, uOfsY);
     ctx.lineTo(uOfsX + xp * uScale, uOfsY + W * uScale);
@@ -793,7 +843,7 @@ function generateDrawing() {
     const nx = uOfsX + xp * uScale, ny = uOfsY + 10;
     ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(nx, ny, 7, 0, Math.PI * 2);
-    ctx.fillStyle = '#f97316'; ctx.fill();
+    ctx.fillStyle = infeasible ? '#dc2626' : '#f97316'; ctx.fill();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -859,7 +909,8 @@ function generateDrawing() {
   ctx.fillText(t('material') + ': ' + mtName, border + 10, ty); ty += lh;
   ctx.fillText(t('thickness') + ': ' + S.metal.thickness + ' mm', border + 10, ty); ty += lh;
   ctx.fillText('R: ' + S.metal.bendRadius + ' mm  |  K: ' + S.metal.kFactor.toFixed(2), border + 10, ty); ty += lh;
-  ctx.fillText(t('bendWord1') + ': ' + res.bendInfos.length + '  |  L: ' + L.toFixed(1) + ' mm  |  W: ' + W.toFixed(1) + ' mm', border + 10, ty);
+  ctx.fillText(t('bendWord1') + ': ' + res.bendInfos.length + '  |  L: ' + L.toFixed(1) + ' mm  |  W: ' + W.toFixed(1) + ' mm', border + 10, ty); ty += lh;
+  ctx.fillText(t('dieSelect') + ': ' + (S.lang === 'en' ? die.nameEn : die.nameRu) + '  |  ' + t('punchSelect') + ': ' + (S.lang === 'en' ? punch.nameEn : punch.nameRu), border + 10, ty);
 
   ctx.textAlign = 'right'; ty = tbTop + 8;
   ctx.font = 'bold 10px sans-serif';
@@ -871,7 +922,23 @@ function generateDrawing() {
 
   // Show dialog with preview
   const dataUrl = cv.toDataURL('image/png');
-  let dh = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><svg class="h-4 w-4 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' + t('drawingTitle') + '</h3>';
+  let dh = '';
+  // Предупреждение о невозможных гибах
+  if (badBends.length > 0) {
+    const dieName = S.lang === 'en' ? die.nameEn : die.nameRu;
+    const punchName = S.lang === 'en' ? punch.nameEn : punch.nameRu;
+    dh += '<div class="mb-3 rounded-lg border-2 border-red-500/50 bg-red-50 dark:bg-red-950/30 p-3">';
+    dh += '<p class="text-xs font-semibold text-red-700 dark:text-red-400 flex items-center gap-1.5 mb-1"><i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>' + t('bendWarningsTitle') + ' — ' + dieName + ' / ' + punchName + '</p>';
+    dh += '<div class="space-y-1">';
+    badBends.forEach((b, i) => {
+      dh += '<div class="text-[10px] text-red-700 dark:text-red-400">';
+      dh += '<b>Гиб #' + (b.vertexIndex) + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b>';
+      b.problems.forEach(pr => { dh += '<div class="pl-3">— ' + pr + '</div>'; });
+      dh += '</div>';
+    });
+    dh += '</div></div>';
+  }
+  dh += '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><svg class="h-4 w-4 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' + t('drawingTitle') + '</h3>';
   dh += '<div style="max-height:85vh;overflow-y:auto;"><img src="' + dataUrl + '" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;"/></div>';
   dh += '<div class="flex gap-2 mt-3">';
   dh += '<button onclick="downloadDrawing()" class="flex-1 text-xs h-9 px-3 bg-green-600 text-white rounded-md hover:bg-green-700 font-semibold flex items-center justify-center gap-1.5"><i data-lucide="download" class="h-3.5 w-3.5"></i>' + t('drawingDownload') + '</button>';
