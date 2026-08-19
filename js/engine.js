@@ -76,16 +76,21 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, 
     }
   }
 
-  // 4. Проверка толщины матрицы: если на полке два гиба (Z, U, ступенька и т.д.),
+  // 4. Проверка высоты матрицы: если на полке два гиба (Z, U, ступенька и т.д.),
   //    полка между ними должна быть достаточно длинной, чтобы матрица поместилась.
-  //    Минимальная полка = (высота матрицы / 2) / sin(угол/2) + V/2
+  //    Физика: матрица встаёт под полку между согнутыми соседними полками.
+  //    Чем острее угол (больше угол деформации), тем выше поднимаются края
+  //    соседних полок и тем длиннее нужна полка между гибами.
+  //    Чем тупее угол (маленькая деформация), тем свободнее — матрица входит легко.
+  //    Проекция высоты матрицы на полку: H × sin(угол/2) + V/2.
+  //    При 90° совпадает с прежней формулой (H/2)/sin(45°) = H·sin(45°).
   if (checkDieHeight && die.height > 0 && half > 0) {
-    const minFlangeBetween = (die.height / 2) / Math.sin(half) + die.vWidth / 2;
+    const minFlangeBetween = die.height * Math.sin(half) + die.vWidth / 2;
     if (hasBendBefore && segBeforeLen < minFlangeBetween) {
-      problems.push('Полка слева ' + segBeforeLen.toFixed(1) + ' мм: матрица (толщина ' + die.height + ' мм) не поместится между гибами, нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
+      problems.push('Полка слева ' + segBeforeLen.toFixed(1) + ' мм: матрица (высота ' + die.height + ' мм) не поместится между гибами, нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
     }
     if (hasBendAfter && segAfterLen < minFlangeBetween) {
-      problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм: матрица (толщина ' + die.height + ' мм) не поместится между гибами, нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
+      problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм: матрица (высота ' + die.height + ' мм) не поместится между гибами, нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
     }
   }
 
