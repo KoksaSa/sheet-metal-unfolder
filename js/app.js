@@ -67,7 +67,7 @@ function init() {
 
   // Force hide dialog on load (defensive)
   const overlay = document.getElementById('dialog-overlay');
-  if (overlay) overlay.classList.add('hidden');
+  if (overlay) overlay.style.display = 'none';
 
   // Start resize observer after canvases exist
   const canvasCont = document.getElementById('canvas-container');

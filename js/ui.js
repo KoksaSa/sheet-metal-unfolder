@@ -75,15 +75,16 @@ function showDxfOptions() {
 function showDialog(html, extraClass) {
   const box = document.getElementById('dialog-content');
   const overlay = document.getElementById('dialog-overlay');
-  if (!html || html.trim() === '') return; // Prevent empty dialogs
-  if (!overlay) return; // Dialog not in DOM yet
+  if (!html || html.trim() === '') return;
+  if (!overlay) return;
   box.innerHTML = html;
   box.className = extraClass ? 'dialog-box ' + extraClass : 'dialog-box';
-  overlay.classList.remove('hidden');
+  overlay.style.display = 'flex';
 }
 
 function closeDialog() {
-  document.getElementById('dialog-overlay').classList.add('hidden');
+  const overlay = document.getElementById('dialog-overlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 // ==================== CUSTOM DIE DIALOG ====================
@@ -206,20 +207,25 @@ function showCustomDieDialog() {
 }
 
 function applyCustomDie() {
-  const nameRu = document.getElementById('cust-die-name').value.trim() || 'Custom Die';
-  const profile = _diePoints.map(p => ({ x: parseFloat((p.x / DIE_SCALE).toFixed(1)), y: parseFloat((p.y / DIE_SCALE).toFixed(1)) }));
-  if (profile.length < 3) { toast(t('needMorePoints'), 'error'); return; }
-  // Calculate dimensions from profile
-  const minX = Math.min(...profile.map(p => p.x));
-  const maxX = Math.max(...profile.map(p => p.x));
-  const minY = Math.min(...profile.map(p => p.y));
-  const maxY = Math.max(...profile.map(p => p.y));
-  const vWidth = Math.round(maxX - minX);
-  const height = Math.round((maxY - minY) * 2);
-  addCustomDie({ nameRu, vWidth, height, maxAngle: 140, profile });
-  closeDialog();
-  doUnfold();
-  renderAll();
+  try {
+    const nameRu = document.getElementById('cust-die-name').value.trim() || 'Custom Die';
+    if (_diePoints.length < 3) { toast(t('needMorePoints'), 'error'); return; }
+    const profile = _diePoints.map(p => ({ x: parseFloat((p.x / DIE_SCALE).toFixed(1)), y: parseFloat((p.y / DIE_SCALE).toFixed(1)) }));
+    // Calculate dimensions from profile
+    const minX = Math.min(...profile.map(p => p.x));
+    const maxX = Math.max(...profile.map(p => p.x));
+    const minY = Math.min(...profile.map(p => p.y));
+    const maxY = Math.max(...profile.map(p => p.y));
+    const vWidth = Math.round(maxX - minX);
+    const height = Math.round((maxY - minY) * 2);
+    addCustomDie({ nameRu, vWidth, height, maxAngle: 140, profile });
+    closeDialog();
+    doUnfold();
+    renderAll();
+  } catch (err) {
+    console.error('applyCustomDie error:', err);
+    toast('Ошибка: ' + err.message, 'error');
+  }
 }
 
 // ==================== CUSTOM PUNCH DIALOG ====================
@@ -333,16 +339,21 @@ function showCustomPunchDialog() {
 }
 
 function applyCustomPunch() {
-  const nameRu = document.getElementById('cust-punch-name').value.trim() || 'Custom Punch';
-  const profile = _punchPoints.map(p => ({ x: parseFloat((p.x / PUNCH_SCALE).toFixed(1)), y: parseFloat((p.y / PUNCH_SCALE).toFixed(1)) }));
-  if (profile.length < 2) { toast(t('needMorePoints'), 'error'); return; }
-  const minX = Math.min(...profile.map(p => p.x));
-  const maxX = Math.max(...profile.map(p => p.x));
-  const radius = Math.round((maxX - minX) * 10) / 10;
-  addCustomPunch({ nameRu, radius, maxAngle: 90, profile });
-  closeDialog();
-  doUnfold();
-  renderAll();
+  try {
+    const nameRu = document.getElementById('cust-punch-name').value.trim() || 'Custom Punch';
+    if (_punchPoints.length < 2) { toast(t('needMorePoints'), 'error'); return; }
+    const profile = _punchPoints.map(p => ({ x: parseFloat((p.x / PUNCH_SCALE).toFixed(1)), y: parseFloat((p.y / PUNCH_SCALE).toFixed(1)) }));
+    const minX = Math.min(...profile.map(p => p.x));
+    const maxX = Math.max(...profile.map(p => p.x));
+    const radius = Math.round((maxX - minX) * 10) / 10;
+    addCustomPunch({ nameRu, radius, maxAngle: 90, profile });
+    closeDialog();
+    doUnfold();
+    renderAll();
+  } catch (err) {
+    console.error('applyCustomPunch error:', err);
+    toast('Ошибка: ' + err.message, 'error');
+  }
 }
 
 // ==================== HEM DIALOG ====================
