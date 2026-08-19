@@ -789,10 +789,30 @@ function applyEditSegment(idx) {
 
   const p1 = S.points[idx];
   const rad = ang * Math.PI / 180;
-  S.points[idx + 1] = {
-    x: p1.x + Math.cos(rad) * len,
-    y: p1.y + Math.sin(rad) * len
-  };
+  const dirX = Math.cos(rad), dirY = Math.sin(rad);
+
+  // Удлинение должно идти в сторону свободного края контура,
+  // а не к пересечению с другой точкой (гибом).
+  // Свободные края: точка 0 (начало контура) и точка N-1 (конец контура).
+  const isLeftFree = idx === 0;
+  const isRightFree = idx + 1 === S.points.length - 1;
+
+  if (isLeftFree && !isRightFree && S.points.length > 2) {
+    // Левый конец — свободный край: двигаем НАЧАЛЬНУЮ точку в обратном
+    // направлении, сохраняя точку гиба (idx+1) на месте.
+    // Так удлинение уходит в сторону свободного края.
+    S.points[idx] = {
+      x: S.points[idx + 1].x - dirX * len,
+      y: S.points[idx + 1].y - dirY * len
+    };
+  } else {
+    // Правый конец — свободный край (или контур из двух точек):
+    // двигаем КОНЕЧНУЮ точку по направлению сегмента.
+    S.points[idx + 1] = {
+      x: p1.x + dirX * len,
+      y: p1.y + dirY * len
+    };
+  }
 
   S.redoHistory = [];
   closeDialog();
@@ -874,6 +894,16 @@ function renderUnfoldInfo() {
     badBends.forEach(b => {
       const bn = res.bendInfos.indexOf(b) + 1;
       h += '<div class="text-[10px] text-red-700 dark:text-red-400"><b>' + t('bend') + ' ' + bn + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b><div class="pl-2">' + b.problems.join('<br>— ') + '</div></div>';
+    });
+    h += '</div></div>';
+  }
+  // Bend warnings (не блокируют развёртку, но обращают внимание)
+  const warnBends = (res.bendInfos || []).filter(b => b.warnings && b.warnings.length > 0);
+  if (warnBends.length > 0) {
+    h += '<div class="rounded-lg bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-400/60 dark:border-amber-700/60 p-2.5"><div class="flex items-start gap-2"><i data-lucide="triangle-alert" class="h-4 w-4 text-amber-500 shrink-0 mt-0.5"></i><div class="flex-1"><p class="text-[11px] font-semibold text-amber-700 dark:text-amber-300">' + t('bendWarnings') + '</p></div></div><div class="mt-1.5 space-y-1">';
+    warnBends.forEach(b => {
+      const bn = res.bendInfos.indexOf(b) + 1;
+      h += '<div class="text-[10px] text-amber-700 dark:text-amber-400"><b>' + t('bend') + ' ' + bn + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b><div class="pl-2">' + b.warnings.join('<br>— ') + '</div></div>';
     });
     h += '</div></div>';
   }
@@ -1265,6 +1295,20 @@ function generateDrawing() {
       dh += '<div class="text-[10px] text-red-700 dark:text-red-400">';
       dh += '<b>Гиб #' + (b.vertexIndex) + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b>';
       b.problems.forEach(pr => { dh += '<div class="pl-3">— ' + pr + '</div>'; });
+      dh += '</div>';
+    });
+    dh += '</div></div>';
+  }
+  // Предупреждения (не блокируют, но показываем жёлтым)
+  const warnBends = (res.bendInfos || []).filter(b => b.warnings && b.warnings.length > 0);
+  if (warnBends.length > 0) {
+    dh += '<div class="mb-3 rounded-lg border-2 border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3">';
+    dh += '<p class="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mb-1"><i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>' + t('bendWarnings') + '</p>';
+    dh += '<div class="space-y-1">';
+    warnBends.forEach(b => {
+      dh += '<div class="text-[10px] text-amber-700 dark:text-amber-400">';
+      dh += '<b>' + t('bend') + ' #' + (b.vertexIndex) + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b>';
+      b.warnings.forEach(pr => { dh += '<div class="pl-3">— ' + pr + '</div>'; });
       dh += '</div>';
     });
     dh += '</div></div>';

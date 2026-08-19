@@ -44,10 +44,11 @@ function getMetalDensity(mtIdx, thick) {
  * @param {boolean} hasBendBefore - есть ли гиб на другом конце полки до
  * @param {boolean} hasBendAfter - есть ли гиб на другом конце полки после
  * @param {boolean} checkDieHeight - проверять ли толщину матрицы
- * @returns {{ok: boolean, problems: string[]}} результат проверки
+ * @returns {{ok: boolean, problems: string[], warnings: string[]}} результат проверки
  */
 function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight) {
   const problems = [];
+  const warnings = [];
   const bendDeg = bend.bendAngle * 180 / Math.PI;
 
   // 1. Угол гиба должен укладываться в возможности инструмента,
@@ -88,7 +89,24 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, 
     }
   }
 
-  return { ok: problems.length === 0, problems };
+  // 5. Крайняя полка длиннее высоты матрицы — при гибке кромка может
+  //    упереться в подложку (стол / станину пресса).
+  //    Вертикальное опускание конца полки = длина × sin(угол гиба).
+  //    Если оно превышает высоту матрицы — кромка уйдёт ниже стола.
+  if (die.height > 0) {
+    const bendRad = bend.bendAngle;
+    const drop = Math.sin(bendRad);
+    if (drop > 0) {
+      if (!hasBendBefore && segBeforeLen * drop > die.height) {
+        warnings.push('Крайняя полка слева ' + segBeforeLen.toFixed(1) + ' мм длиннее высоты матрицы ' + die.height + ' мм — при гибке кромка упрётся в подложку');
+      }
+      if (!hasBendAfter && segAfterLen * drop > die.height) {
+        warnings.push('Крайняя полка справа ' + segAfterLen.toFixed(1) + ' мм длиннее высоты матрицы ' + die.height + ' мм — при гибке кромка упрётся в подложку');
+      }
+    }
+  }
+
+  return { ok: problems.length === 0, problems, warnings };
 }
 
 /**
@@ -164,6 +182,7 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
       const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH);
       b.feasible = result.ok;
       b.problems = result.problems;
+      b.warnings = result.warnings;
       b.flangeBefore = beforeLen;
       b.flangeAfter = afterLen;
     });
