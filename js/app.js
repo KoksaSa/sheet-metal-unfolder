@@ -79,6 +79,10 @@ function init() {
       if (d.points && d.metal) {
         S.points = d.points;
         Object.assign(S.metal, d.metal);
+        // Ensure new fields exist (compatibility with old saves)
+        if (S.metal.dieIndex === undefined) S.metal.dieIndex = 0;
+        if (S.metal.punchIndex === undefined) S.metal.punchIndex = 1;
+        if (S.checkDieHeight === undefined) S.checkDieHeight = true;
         if (d.hems) S.hems = d.hems;
         else S.hems = [];
       }
