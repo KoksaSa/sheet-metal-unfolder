@@ -106,8 +106,8 @@ function initDieCanvas() {
   cv.onmouseleave = function() { drawDieProfile(); };
   cv.onclick = function(e) {
     const rect = cv.getBoundingClientRect();
-    const x = Math.round((e.clientX - rect.left) / 10) * 10;
-    const y = Math.round((e.clientY - rect.top) / 10) * 10;
+    let x = Math.round((e.clientX - rect.left) / 10) * 10;
+    let y = Math.round((e.clientY - rect.top) / 10) * 10;
     // Snap to horizontal or vertical from last point
     if (_diePoints.length > 0) {
       const last = _diePoints[_diePoints.length - 1];
