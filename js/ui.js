@@ -173,6 +173,7 @@ function clearDieProfile() {
 }
 
 function showCustomDieDialog() {
+  console.log('showCustomDieDialog called');
   const tools = loadCustomTools();
   let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-blue-600"></i>' + t('customDie') + '</h3>';
   h += '<div class="space-y-2">';
@@ -354,39 +355,6 @@ function applyCustomPunch() {
     console.error('applyCustomPunch error:', err);
     toast('Ошибка: ' + err.message, 'error');
   }
-}
-
-// ==================== HEM DIALOG ====================
-
-function drawDieProfile() {
-  if (!_dieCtx) return;
-  const w = _dieCanvas.width, h = _dieCanvas.height;
-  _dieCtx.clearRect(0, 0, w, h);
-  // Draw grid
-  _dieCtx.strokeStyle = '#e5e7eb'; _dieCtx.lineWidth = 0.5;
-  for (let x = 0; x < w; x += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(x, 0); _dieCtx.lineTo(x, h); _dieCtx.stroke(); }
-  for (let y = 0; y < h; y += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(0, y); _dieCtx.lineTo(w, y); _dieCtx.stroke(); }
-  // Draw profile points
-  if (_diePoints.length === 0) {
-    _dieCtx.fillStyle = '#9ca3af'; _dieCtx.font = '11px sans-serif'; _dieCtx.textAlign = 'center';
-    _dieCtx.fillText(t('clickToDraw'), w/2, h/2);
-    return;
-  }
-  // Draw line connecting points
-  _dieCtx.strokeStyle = '#3b82f6'; _dieCtx.lineWidth = 2; _dieCtx.beginPath();
-  _diePoints.forEach((p, i) => { i === 0 ? _dieCtx.moveTo(p.x, p.y) : _dieCtx.lineTo(p.x, p.y); });
-  _dieCtx.stroke();
-  // Draw points
-  _diePoints.forEach((p, i) => {
-    _dieCtx.fillStyle = '#1d4ed8'; _dieCtx.beginPath();
-    _dieCtx.arc(p.x, p.y, 4, 0, Math.PI * 2); _dieCtx.fill();
-    _dieCtx.fillStyle = '#fff'; _dieCtx.font = '9px sans-serif'; _dieCtx.textAlign = 'center';
-    _dieCtx.fillText(i + 1, p.x, p.y - 7);
-  });
-}
-
-function clearDieProfile() {
-  _diePoints = []; drawDieProfile();
 }
 
 // ==================== HEM DIALOG ====================
