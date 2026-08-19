@@ -168,8 +168,8 @@ function selectMetalType(idx) {
 
 function maybeAutoUnfold() {
   if (!S.autoUnfold || S.points.length < 2 || S.metal.width <= 0) return;
-  const die = DIES[S.metal.dieIndex] || DIES[0];
-  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  const die = getDieByIndex(S.metal.dieIndex);
+  const punch = getPunchByIndex(S.metal.punchIndex);
   S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width, die, punch);
   // Reset unfold zoom to auto-fit when profile changes
   if (typeof ufManualZoom !== 'undefined') ufManualZoom = null;
@@ -180,8 +180,8 @@ function doUnfold() {
     toast(S.lang === 'ru' ? 'Ширина должна быть больше 0' : 'Width must be > 0', 'error');
     return;
   }
-  const die = DIES[S.metal.dieIndex] || DIES[0];
-  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  const die = getDieByIndex(S.metal.dieIndex);
+  const punch = getPunchByIndex(S.metal.punchIndex);
   S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width, die, punch);
 }
 

@@ -87,272 +87,163 @@ function closeDialog() {
   if (overlay) overlay.style.display = 'none';
 }
 
-// ==================== CUSTOM DIE DIALOG ====================
-// Canvas state for drawing die profile
-let _dieCanvas = null, _dieCtx = null, _diePoints = [];
-const DIE_SCALE = 2; // 1 pixel = 0.5mm
+// ==================== CUSTOM TOOL IMPORT (DXF) ====================
+// Временные данные импорта
+let _importProfile = null;   // { chains, width, height, minX, maxX, minY, maxY }
+let _importType = 'die';     // 'die' | 'punch'
+let _importFileName = '';
 
-function initDieCanvas() {
-  const cv = document.getElementById('cust-die-canvas');
-  if (!cv) return;
-  _dieCanvas = cv;
-  _dieCtx = cv.getContext('2d');
-  _diePoints = [];
-  cv.onmousemove = function(e) {
-    const rect = cv.getBoundingClientRect();
-    const mx = Math.round((e.clientX - rect.left) / 10) * 10;
-    const my = Math.round((e.clientY - rect.top) / 10) * 10;
-    drawDieProfile(mx, my);
-  };
-  cv.onmouseleave = function() { drawDieProfile(); };
-  cv.onclick = function(e) {
-    const rect = cv.getBoundingClientRect();
-    let x = Math.round((e.clientX - rect.left) / 10) * 10;
-    let y = Math.round((e.clientY - rect.top) / 10) * 10;
-    // Snap to horizontal or vertical from last point
-    if (_diePoints.length > 0) {
-      const last = _diePoints[_diePoints.length - 1];
-      const dx = Math.abs(x - last.x);
-      const dy = Math.abs(y - last.y);
-      if (dx < dy) x = last.x; // snap horizontal
-      else y = last.y; // snap vertical
-    }
-    _diePoints.push({ x, y });
-    drawDieProfile();
-  };
-  drawDieProfile();
-}
+function showCustomDieDialog() { showToolImportDialog('die'); }
+function showCustomPunchDialog() { showToolImportDialog('punch'); }
 
-function drawDieProfile(mouseX, mouseY) {
-  if (!_dieCtx) return;
-  const w = _dieCanvas.width, h = _dieCanvas.height;
-  _dieCtx.clearRect(0, 0, w, h);
-  // Draw grid
-  _dieCtx.strokeStyle = '#e5e7eb'; _dieCtx.lineWidth = 0.5;
-  for (let x = 0; x < w; x += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(x, 0); _dieCtx.lineTo(x, h); _dieCtx.stroke(); }
-  for (let y = 0; y < h; y += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(0, y); _dieCtx.lineTo(w, y); _dieCtx.stroke(); }
-  // Draw profile points
-  if (_diePoints.length === 0) {
-    _dieCtx.fillStyle = '#9ca3af'; _dieCtx.font = '11px sans-serif'; _dieCtx.textAlign = 'center';
-    _dieCtx.fillText(t('clickToDraw'), w/2, h/2);
-    return;
+function drawToolProfileSVG(profile, viewW, viewH) {
+  // Рисуем все цепочки профиля, масштабируя под viewBox
+  if (!profile || !profile.chains || !profile.chains.length) {
+    return '<svg width="' + viewW + '" height="' + viewH + '" viewBox="0 0 ' + viewW + ' ' + viewH + '"></svg>';
   }
-  // Draw line connecting points
-  _dieCtx.strokeStyle = '#3b82f6'; _dieCtx.lineWidth = 2; _dieCtx.beginPath();
-  _diePoints.forEach((p, i) => { i === 0 ? _dieCtx.moveTo(p.x, p.y) : _dieCtx.lineTo(p.x, p.y); });
-  _dieCtx.stroke();
-  // Draw points
-  _diePoints.forEach((p, i) => {
-    _dieCtx.fillStyle = '#1d4ed8'; _dieCtx.beginPath();
-    _dieCtx.arc(p.x, p.y, 4, 0, Math.PI * 2); _dieCtx.fill();
-    _dieCtx.fillStyle = '#fff'; _dieCtx.font = '9px sans-serif'; _dieCtx.textAlign = 'center';
-    _dieCtx.fillText(i + 1, p.x, p.y - 7);
+  const pad = 6;
+  const usableW = viewW - pad * 2;
+  const usableH = viewH - pad * 2;
+  const scale = Math.min(usableW / profile.width, usableH / profile.height) || 1;
+  const offX = pad + (usableW - profile.width * scale) / 2;
+  const offY = pad + (usableH - profile.height * scale) / 2;
+  let d = '';
+  profile.chains.forEach(chain => {
+    chain.forEach((p, pi) => {
+      const sx = offX + (p.x - profile.minX) * scale;
+      const sy = offY + (profile.height - (p.y - profile.minY)) * scale;
+      d += (pi === 0 ? 'M' : 'L') + sx.toFixed(2) + ' ' + sy.toFixed(2) + ' ';
+    });
   });
-  // Draw dimensions
-  if (_diePoints.length >= 2) {
-    const minX = Math.min(..._diePoints.map(p => p.x));
-    const maxX = Math.max(..._diePoints.map(p => p.x));
-    const minY = Math.min(..._diePoints.map(p => p.y));
-    const maxY = Math.max(..._diePoints.map(p => p.y));
-    const wmm = ((maxX - minX) / DIE_SCALE).toFixed(1);
-    const hmm = ((maxY - minY) / DIE_SCALE).toFixed(1);
-    _dieCtx.fillStyle = '#1f2937'; _dieCtx.font = '10px sans-serif'; _dieCtx.textAlign = 'left';
-    _dieCtx.fillText('V=' + wmm + 'мм  H=' + hmm + 'мм', 5, h - 5);
-  }
-  // Draw crosshair
-  if (mouseX !== undefined && mouseY !== undefined) {
-    _dieCtx.strokeStyle = '#ef4444'; _dieCtx.lineWidth = 1; _dieCtx.setLineDash([4, 4]);
-    _dieCtx.beginPath(); _dieCtx.moveTo(mouseX, 0); _dieCtx.lineTo(mouseX, h); _dieCtx.stroke();
-    _dieCtx.beginPath(); _dieCtx.moveTo(0, mouseY); _dieCtx.lineTo(w, mouseY); _dieCtx.stroke();
-    _dieCtx.setLineDash([]);
-  }
+  const color = _importType === 'punch' ? '#ef4444' : '#3b82f6';
+  return '<svg width="' + viewW + '" height="' + viewH + '" viewBox="0 0 ' + viewW + ' ' + viewH + '" style="display:block">' +
+    '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.6" stroke-linejoin="round"/>' +
+    '</svg>';
 }
 
-function clearDieProfile() {
-  _diePoints = []; drawDieProfile();
-}
-
-function showCustomDieDialog() {
-  console.log('showCustomDieDialog called');
+function showToolImportDialog(type) {
+  _importType = type;
+  _importProfile = null;
+  _importFileName = '';
   const tools = loadCustomTools();
-  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-blue-600"></i>' + t('customDie') + '</h3>';
-  h += '<div class="space-y-2">';
-  h += '<div><label class="text-xs font-medium">' + t('customDieName') + '</label><input type="text" id="cust-die-name" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
-  // Canvas for drawing die profile
-  h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('drawProfile') + '</label>';
-  h += '<div class="relative border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800">';
-  h += '<canvas id="cust-die-canvas" width="300" height="150" class="cursor-crosshair"></canvas>';
-  h += '<div class="absolute top-1 right-1 flex gap-1">';
-  h += '<button onclick="clearDieProfile()" class="text-[9px] px-2 py-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 rounded border border-red-200 dark:border-red-800">' + t('clear') + '</button>';
-  h += '</div></div>';
-  h += '<p class="text-[9px] text-gray-400">' + t('drawProfileHint') + '</p>';
+  const isDie = type === 'die';
+  const title = isDie ? t('customDie') : t('customPunch');
+  const list = isDie ? tools.customDies : tools.customPunches;
+  const listLabel = isDie ? t('customDiesList') : t('customPunchesList');
+
+  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-blue-600"></i>' + title + '</h3>';
+  h += '<div class="space-y-3">';
+
+  // Имя
+  h += '<div><label class="text-xs font-medium">' + t('customDieName') + '</label>';
+  h += '<input type="text" id="tool-name" placeholder="V-custom" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+
+  // Импорт файла DXF
+  h += '<div class="rounded-md border border-dashed border-gray-300 dark:border-gray-600 p-2"><div class="text-[10px] font-medium text-gray-500 mb-1">' + t('dxfImport') + '</div>';
+  h += '<input type="file" accept=".dxf" id="tool-dxf-file" onchange="importToolDXF(this)" class="text-[10px] w-full text-gray-600 dark:text-gray-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-[10px] file:bg-blue-600 file:text-white hover:file:bg-blue-700 cursor-pointer">';
+  h += '<div id="tool-dxf-info" class="mt-1 text-[10px] text-gray-400">' + t('dxfNoFile') + '</div>';
   h += '</div>';
+
+  // Превью профиля
+  h += '<div><label class="text-xs font-medium">' + t('toolPreview') + '</label>';
+  h += '<div id="tool-preview" class="mt-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 h-28 flex items-center justify-center overflow-hidden"></div>';
+  h += '<div id="tool-dims" class="mt-1 text-[10px] font-mono text-gray-500">\u2014</div>';
   h += '</div>';
-  // List existing custom dies
-  if (tools.customDies.length > 0) {
-    h += '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + t('customDiesList') + '</p>';
-    tools.customDies.forEach((d, i) => {
+
+  // Кнопки
+  h += '<div class="flex justify-end gap-2 mt-1"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
+  h += '<button onclick="applyCustomTool()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
+
+  // Список существующих
+  if (list.length > 0) {
+    h += '<div class="pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + listLabel + '</p>';
+    list.forEach(tool => {
       h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
-      h += '<span class="font-mono">' + d.nameRu + ' (V' + d.vWidth + ' H' + d.height + ')</span>';
-      h += '<button onclick="deleteCustomDie(\'' + d.id + '\');showCustomDieDialog();" class="text-red-500 hover:text-red-700 px-1">×</button>';
+      h += '<div class="flex items-center gap-2 min-w-0">';
+      h += '<div class="w-10 h-8 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 shrink-0 overflow-hidden">' + drawProfileSVG(tool.profile, 40, 32, isDie ? '#3b82f6' : '#ef4444', 2) + '</div>';
+      h += '<span class="font-mono truncate">' + tool.nameRu + '</span>';
+      h += '</div>';
+      h += '<button onclick="' + (isDie ? 'deleteCustomDie' : 'deleteCustomPunch') + '(\'' + tool.id + '\');showCustom' + (isDie ? 'Die' : 'Punch') + 'Dialog();" class="text-red-500 hover:text-red-700 px-1 text-sm leading-none">×</button>';
       h += '</div>';
     });
     h += '</div>';
   }
-  h += '<div class="flex justify-end gap-2 mt-4"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
-  h += '<button onclick="applyCustomDie()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
+
+  h += '</div>';
   showDialog(h);
   lucide.createIcons();
-  setTimeout(() => { const el = document.getElementById('cust-die-name'); if (el) el.focus(); }, 100);
-  setTimeout(initDieCanvas, 150);
+  // Превью по умолчанию
+  document.getElementById('tool-preview').innerHTML = drawToolProfileSVG(null, 280, 100);
+  setTimeout(() => { const el = document.getElementById('tool-name'); if (el) el.focus(); }, 100);
 }
 
-function applyCustomDie() {
+async function importToolDXF(input) {
+  if (!input || !input.files || !input.files.length) return;
+  const file = input.files[0];
+  _importFileName = file.name.replace(/\.dxf$/i, '');
   try {
-    const nameRu = document.getElementById('cust-die-name').value.trim() || 'Custom Die';
-    if (_diePoints.length < 3) { toast(t('needMorePoints'), 'error'); return; }
-    const profile = _diePoints.map(p => ({ x: parseFloat((p.x / DIE_SCALE).toFixed(1)), y: parseFloat((p.y / DIE_SCALE).toFixed(1)) }));
-    // Calculate dimensions from profile
-    const minX = Math.min(...profile.map(p => p.x));
-    const maxX = Math.max(...profile.map(p => p.x));
-    const minY = Math.min(...profile.map(p => p.y));
-    const maxY = Math.max(...profile.map(p => p.y));
-    const vWidth = Math.round(maxX - minX);
-    const height = Math.round((maxY - minY) * 2);
-    addCustomDie({ nameRu, vWidth, height, maxAngle: 140, profile });
-    closeDialog();
-    doUnfold();
-    renderAll();
-  } catch (err) {
-    console.error('applyCustomDie error:', err);
-    toast('Ошибка: ' + err.message, 'error');
-  }
-}
-
-// ==================== CUSTOM PUNCH DIALOG ====================
-let _punchCanvas = null, _punchCtx = null, _punchPoints = [];
-const PUNCH_SCALE = 2;
-
-function initPunchCanvas() {
-  const cv = document.getElementById('cust-punch-canvas');
-  if (!cv) return;
-  _punchCanvas = cv;
-  _punchCtx = cv.getContext('2d');
-  _punchPoints = [];
-  cv.onmousemove = function(e) {
-    const rect = cv.getBoundingClientRect();
-    const mx = Math.round((e.clientX - rect.left) / 10) * 10;
-    const my = Math.round((e.clientY - rect.top) / 10) * 10;
-    drawPunchProfile(mx, my);
-  };
-  cv.onmouseleave = function() { drawPunchProfile(); };
-  cv.onclick = function(e) {
-    const rect = cv.getBoundingClientRect();
-    let x = Math.round((e.clientX - rect.left) / 10) * 10;
-    let y = Math.round((e.clientY - rect.top) / 10) * 10;
-    if (_punchPoints.length > 0) {
-      const last = _punchPoints[_punchPoints.length - 1];
-      const dx = Math.abs(x - last.x);
-      const dy = Math.abs(y - last.y);
-      if (dx < dy) x = last.x;
-      else y = last.y;
+    const text = await file.text();
+    const profile = profileFromDXF(text);
+    if (profile && profile.chains && profile.chains.length) {
+      _importProfile = profile;
+      const prev = document.getElementById('tool-preview');
+      if (prev) prev.innerHTML = drawToolProfileSVG(profile, 280, 100);
+      const dims = document.getElementById('tool-dims');
+      if (dims) dims.textContent =
+        t('widthShort') + ': ' + profile.width.toFixed(1) + ' ' + t('mm') +
+        '   ' + t('heightShort') + ': ' + profile.height.toFixed(1) + ' ' + t('mm');
+      const info = document.getElementById('tool-dxf-info');
+      if (info) info.textContent = '✓ ' + _importFileName;
+      // Подставляем имя по умолчанию
+      const nameEl = document.getElementById('tool-name');
+      if (nameEl && !nameEl.value.trim()) {
+        nameEl.value = _importFileName.replace(/[_\-\s]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      }
+      return;
     }
-    _punchPoints.push({ x, y });
-    drawPunchProfile();
-  };
-  drawPunchProfile();
-}
-
-function drawPunchProfile(mouseX, mouseY) {
-  if (!_punchCtx) return;
-  const w = _punchCanvas.width, h = _punchCanvas.height;
-  _punchCtx.clearRect(0, 0, w, h);
-  _punchCtx.strokeStyle = '#e5e7eb'; _punchCtx.lineWidth = 0.5;
-  for (let x = 0; x < w; x += 20) { _punchCtx.beginPath(); _punchCtx.moveTo(x, 0); _punchCtx.lineTo(x, h); _punchCtx.stroke(); }
-  for (let y = 0; y < h; y += 20) { _punchCtx.beginPath(); _punchCtx.moveTo(0, y); _punchCtx.lineTo(w, y); _punchCtx.stroke(); }
-  if (_punchPoints.length === 0) {
-    _punchCtx.fillStyle = '#9ca3af'; _punchCtx.font = '11px sans-serif'; _punchCtx.textAlign = 'center';
-    _punchCtx.fillText(t('clickToDraw'), w/2, h/2);
-    return;
-  }
-  _punchCtx.strokeStyle = '#ef4444'; _punchCtx.lineWidth = 2; _punchCtx.beginPath();
-  _punchPoints.forEach((p, i) => { i === 0 ? _punchCtx.moveTo(p.x, p.y) : _punchCtx.lineTo(p.x, p.y); });
-  _punchCtx.stroke();
-  _punchPoints.forEach((p, i) => {
-    _punchCtx.fillStyle = '#dc2626'; _punchCtx.beginPath();
-    _punchCtx.arc(p.x, p.y, 4, 0, Math.PI * 2); _punchCtx.fill();
-    _punchCtx.fillStyle = '#fff'; _punchCtx.font = '9px sans-serif'; _punchCtx.textAlign = 'center';
-    _punchCtx.fillText(i + 1, p.x, p.y - 7);
-  });
-  // Draw dimensions
-  if (_punchPoints.length >= 2) {
-    const minX = Math.min(..._punchPoints.map(p => p.x));
-    const maxX = Math.max(..._punchPoints.map(p => p.x));
-    const minY = Math.min(..._punchPoints.map(p => p.y));
-    const wmm = ((maxX - minX) / PUNCH_SCALE).toFixed(1);
-    const hmm = ((maxY - minY) / PUNCH_SCALE).toFixed(1);
-    _punchCtx.fillStyle = '#1f2937'; _punchCtx.font = '10px sans-serif'; _punchCtx.textAlign = 'left';
-    _punchCtx.fillText('R=' + wmm + 'мм  H=' + hmm + 'мм', 5, h - 5);
-  }
-  // Crosshair
-  if (mouseX !== undefined && mouseY !== undefined) {
-    _punchCtx.strokeStyle = '#ef4444'; _punchCtx.lineWidth = 1; _punchCtx.setLineDash([4, 4]);
-    _punchCtx.beginPath(); _punchCtx.moveTo(mouseX, 0); _punchCtx.lineTo(mouseX, h); _punchCtx.stroke();
-    _punchCtx.beginPath(); _punchCtx.moveTo(0, mouseY); _punchCtx.lineTo(w, mouseY); _punchCtx.stroke();
-    _punchCtx.setLineDash([]);
+    const info = document.getElementById('tool-dxf-info');
+    if (info) info.textContent = t('dxfNoContour');
+    toast(t('dxfNoContour'), 'error');
+  } catch (err) {
+    console.error('DXF import error:', err);
+    const info = document.getElementById('tool-dxf-info');
+    if (info) info.textContent = t('dxfError') + ': ' + err.message;
+    toast(t('dxfError'), 'error');
   }
 }
 
-function clearPunchProfile() {
-  _punchPoints = []; drawPunchProfile();
-}
-
-function showCustomPunchDialog() {
-  const tools = loadCustomTools();
-  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-red-600"></i>' + t('customPunch') + '</h3>';
-  h += '<div class="space-y-2">';
-  h += '<div><label class="text-xs font-medium">' + t('customPunchName') + '</label><input type="text" id="cust-punch-name" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
-  h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('drawProfile') + '</label>';
-  h += '<div class="relative border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800">';
-  h += '<canvas id="cust-punch-canvas" width="300" height="150" class="cursor-crosshair"></canvas>';
-  h += '<div class="absolute top-1 right-1 flex gap-1">';
-  h += '<button onclick="clearPunchProfile()" class="text-[9px] px-2 py-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 rounded border border-red-200 dark:border-red-800">' + t('clear') + '</button>';
-  h += '</div></div>';
-  h += '<p class="text-[9px] text-gray-400">' + t('drawProfileHint') + '</p>';
-  h += '</div>';
-  h += '</div>';
-  if (tools.customPunches.length > 0) {
-    h += '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + t('customPunchesList') + '</p>';
-    tools.customPunches.forEach((p, i) => {
-      h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
-      h += '<span class="font-mono">' + p.nameRu + ' (R' + p.radius + ')</span>';
-      h += '<button onclick="deleteCustomPunch(\'' + p.id + '\');showCustomPunchDialog();" class="text-red-500 hover:text-red-700 px-1">×</button>';
-      h += '</div>';
-    });
-    h += '</div>';
-  }
-  h += '<div class="flex justify-end gap-2 mt-4"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
-  h += '<button onclick="applyCustomPunch()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
-  showDialog(h);
-  lucide.createIcons();
-  setTimeout(() => { const el = document.getElementById('cust-punch-name'); if (el) el.focus(); }, 100);
-  setTimeout(initPunchCanvas, 150);
-}
-
-function applyCustomPunch() {
+function applyCustomTool() {
   try {
-    const nameRu = document.getElementById('cust-punch-name').value.trim() || 'Custom Punch';
-    if (_punchPoints.length < 2) { toast(t('needMorePoints'), 'error'); return; }
-    const profile = _punchPoints.map(p => ({ x: parseFloat((p.x / PUNCH_SCALE).toFixed(1)), y: parseFloat((p.y / PUNCH_SCALE).toFixed(1)) }));
-    const minX = Math.min(...profile.map(p => p.x));
-    const maxX = Math.max(...profile.map(p => p.x));
-    const radius = Math.round((maxX - minX) * 10) / 10;
-    addCustomPunch({ nameRu, radius, maxAngle: 90, profile });
+    const nameRu = (document.getElementById('tool-name').value || '').trim();
+    if (!_importProfile) { toast(t('dxfPleaseImport'), 'error'); return; }
+    const profile = _importProfile;
+    // Габариты из DXF
+    const w = Math.max(1, profile.width);
+    const h = Math.max(1, profile.height);
+    if (_importType === 'die') {
+      addCustomDie({
+        nameRu: nameRu || 'Die ' + (profile.width.toFixed(0) || ''),
+        nameEn: nameRu || 'Die',
+        vWidth: Math.round(w),
+        height: Math.round(h),
+        maxAngle: 140,
+        profile
+      });
+    } else {
+      // Радиус пуансона ≈ половина ширины профиля (вершина)
+      addCustomPunch({
+        nameRu: nameRu || 'Punch ' + (profile.width.toFixed(1) || ''),
+        nameEn: nameRu || 'Punch',
+        radius: Math.max(0.5, Math.round(profile.width * 5) / 10),
+        maxAngle: 90,
+        profile
+      });
+    }
     closeDialog();
     doUnfold();
     renderAll();
   } catch (err) {
-    console.error('applyCustomPunch error:', err);
+    console.error('applyCustomTool error:', err);
     toast('Ошибка: ' + err.message, 'error');
   }
 }
@@ -527,6 +418,85 @@ function renderToolButtons() {
   }).join('');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// МИНИАТЮРА ИНСТРУМЕНТА (SVG)
+// Для кастомных инструментов рисует импортированный профиль,
+// для стандартных — схематичное изображение по параметрам.
+// ═══════════════════════════════════════════════════════════════
+function toolThumbSVG(tool, kind, w, h) {
+  w = w || 70; h = h || 34;
+  const pad = 4;
+  if (!tool) return '';
+
+  // Кастомный инструмент с профилем — рисуем его
+  if (tool.isCustom && tool.profile && tool.profile.chains && tool.profile.chains.length) {
+    return drawProfileSVG(tool.profile, w, h, kind === 'punch' ? '#ef4444' : '#3b82f6', pad);
+  }
+  // Старый формат (массив точек) — конвертируем на лету
+  if (tool.isCustom && Array.isArray(tool.profile) && tool.profile.length) {
+    const prof = {
+      chains: [tool.profile],
+      minX: Math.min(...tool.profile.map(p => p.x)),
+      maxX: Math.max(...tool.profile.map(p => p.x)),
+      minY: Math.min(...tool.profile.map(p => p.y)),
+      maxY: Math.max(...tool.profile.map(p => p.y)),
+      width: Math.max(...tool.profile.map(p => p.x)) - Math.min(...tool.profile.map(p => p.x)),
+      height: Math.max(...tool.profile.map(p => p.y)) - Math.min(...tool.profile.map(p => p.y))
+    };
+    return drawProfileSVG(prof, w, h, kind === 'punch' ? '#ef4444' : '#3b82f6', pad);
+  }
+
+  // Стандартный инструмент — схематично
+  const color = kind === 'punch' ? '#ef4444' : '#3b82f6';
+  const usableW = w - pad * 2, usableH = h - pad * 2;
+  if (kind === 'punch') {
+    // пуансон: полукруг (скругление радиуса)
+    if (tool.radius) {
+      return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><path d="M' + pad + ' ' + (h - pad) + ' L' + pad + ' ' + (h - tool.radius * 0.5) + ' A' + tool.radius * 0.5 + ' ' + tool.radius * 0.5 + ' 0 0 1 ' + (w - pad) + ' ' + (h - tool.radius * 0.5) + ' L' + (w - pad) + ' ' + (h - pad) + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+    }
+  } else {
+    // матрица: V-образная канавка
+    const mid = w / 2;
+    const depth = Math.min(usableH * 0.9, tool.vWidth * 0.45 || 6);
+    return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"><path d="M' + pad + ' ' + (h - pad) + ' L' + pad + ' ' + (h - pad - usableH * 0.5) + ' L' + mid + ' ' + (h - pad - depth) + ' L' + (w - pad) + ' ' + (h - pad - usableH * 0.5) + ' L' + (w - pad) + ' ' + (h - pad) + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+  }
+  return '';
+}
+
+function drawProfileSVG(profile, w, h, color, pad) {
+  // Поддержка обоих форматов: { chains } или массив точек
+  let chains = null, minX = 0, minY = 0, pw = 0, ph = 0;
+  if (profile && Array.isArray(profile.chains)) {
+    chains = profile.chains;
+    minX = profile.minX || 0; minY = profile.minY || 0;
+    pw = profile.width; ph = profile.height;
+  } else if (Array.isArray(profile) && profile.length) {
+    chains = [profile];
+    minX = Math.min(...profile.map(p => p.x));
+    minY = Math.min(...profile.map(p => p.y));
+    const maxX = Math.max(...profile.map(p => p.x));
+    const maxY = Math.max(...profile.map(p => p.y));
+    pw = maxX - minX; ph = maxY - minY;
+  }
+  if (!chains || pw <= 0 || ph <= 0) return '';
+  pad = pad || 4;
+  color = color || '#3b82f6';
+  const usableW = w - pad * 2, usableH = h - pad * 2;
+  const scale = Math.min(usableW / pw, usableH / ph) || 1;
+  const offX = pad + (usableW - pw * scale) / 2;
+  const offY = pad + (usableH - ph * scale) / 2;
+  let d = '';
+  chains.forEach(chain => {
+    chain.forEach((p, pi) => {
+      const sx = offX + (p.x - minX) * scale;
+      const sy = offY + (ph - (p.y - minY)) * scale;
+      d += (pi === 0 ? 'M' : 'L') + sx.toFixed(1) + ' ' + sy.toFixed(1) + ' ';
+    });
+  });
+  if (!d) return '';
+  return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="display:block;max-width:100%"><path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+}
+
 function renderMetalParams() {
   const c = document.getElementById('metal-params-container');
   const mt = METAL_TYPES[S.metal.metalTypeIndex];
@@ -547,8 +517,8 @@ function renderMetalParams() {
   // Bend radius
   h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('bendRadius') + ' <span class="text-gray-500">(mm)</span></label><input type="number" min="0.1" max="100" step="0.5" value="' + S.metal.bendRadius + '" onchange="const v=parseFloat(this.value);if(!isNaN(v)&&v>0){setMetalWithUndo({bendRadius:v});doUnfold();renderAll()}" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2"></div>';
   // Die & Punch selection
-  const die = DIES[S.metal.dieIndex] || DIES[0];
-  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  const die = getDieByIndex(S.metal.dieIndex);
+  const punch = getPunchByIndex(S.metal.punchIndex);
   h += '<div class="rounded-md border border-gray-200 dark:border-gray-700 p-2 space-y-2"><div class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('bendTool') + '</div>';
   h += '<div class="grid grid-cols-2 gap-2">';
   h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('dieSelect') + '</label><select onchange="setMetalWithUndo({dieIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
@@ -558,18 +528,22 @@ function renderMetalParams() {
   const tools = loadCustomTools();
   tools.customDies.forEach((d, i) => {
     const idx = DIES.length + i;
-    h += '<option value="' + idx + '"' + (idx === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameRu : d.nameRu) + ' (V' + d.vWidth + ' H' + d.height + ') ★</option>';
+    h += '<option value="' + idx + '"' + (idx === S.metal.dieIndex ? ' selected' : '') + '>' + d.nameRu + ' (V' + d.vWidth + ' H' + d.height + ') ★</option>';
   });
-  h += '</select></div>';
+  h += '</select>';
+  h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + toolThumbSVG(die, 'die', 70, 32) + '</div>';
+  h += '</div>';
   h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="setMetalWithUndo({punchIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
   PUNCHES.forEach((p, i) => {
     h += '<option value="' + i + '"' + (i === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameEn : p.nameRu) + '</option>';
   });
   tools.customPunches.forEach((p, i) => {
     const idx = PUNCHES.length + i;
-    h += '<option value="' + idx + '"' + (idx === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameRu : p.nameRu) + ' (R' + p.radius + ') ★</option>';
+    h += '<option value="' + idx + '"' + (idx === S.metal.punchIndex ? ' selected' : '') + '>' + p.nameRu + ' (R' + p.radius + ') ★</option>';
   });
-  h += '</select></div>';
+  h += '</select>';
+  h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + toolThumbSVG(punch, 'punch', 70, 32) + '</div>';
+  h += '</div>';
   h += '</div>';
   // Custom tools buttons
   h += '<div class="grid grid-cols-2 gap-1.5 pt-1">';
@@ -792,18 +766,8 @@ function renderUnfoldInfo() {
   const fmtW = wt < .001 ? (wt * 1000).toFixed(1) + ' ' + t('weightG') : wt < 1 ? (wt * 1000).toFixed(0) + ' ' + t('weightG') : wt.toFixed(3) + ' ' + t('weightKg');
   const density = getMetalDensity(S.metal.metalTypeIndex, S.metal.thickness) * 1e9;
   // Get die/punch (custom or preset)
-  const tools = loadCustomTools();
-  let die, punch;
-  if (S.metal.dieIndex >= DIES.length) {
-    die = tools.customDies[S.metal.dieIndex - DIES.length];
-  } else {
-    die = DIES[S.metal.dieIndex] || DIES[0];
-  }
-  if (S.metal.punchIndex >= PUNCHES.length) {
-    punch = tools.customPunches[S.metal.punchIndex - PUNCHES.length];
-  } else {
-    punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
-  }
+  const die = getDieByIndex(S.metal.dieIndex);
+  const punch = getPunchByIndex(S.metal.punchIndex);
   // Short flanges
   const minFlange = S.metal.bendRadius * 2 + S.metal.thickness;
   let shortCount = 0;
@@ -913,8 +877,8 @@ function generateDrawing() {
   const mtName = S.lang === 'en' ? mt.nameEn : mt.nameRu;
   // Невозможные гибы
   const badBends = (res.bendInfos || []).filter(b => b.feasible === false);
-  const die = DIES[S.metal.dieIndex] || DIES[0];
-  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  const die = getDieByIndex(S.metal.dieIndex);
+  const punch = getPunchByIndex(S.metal.punchIndex);
   const L = res.totalLength, W = res.width;
   const area = L * W;
   const wt = calcWeight(area, S.metal.thickness, S.metal.metalTypeIndex);

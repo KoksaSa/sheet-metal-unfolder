@@ -108,28 +108,25 @@ function deleteCustomPunch(id) {
   saveCustomTools(tools);
 }
 
-// Convert profile points to die/punch parameters
-function profileToParams(profile, name) {
-  if (!profile || profile.length < 3) return null;
-  // Find top width (widest point at top)
-  let minY = Infinity, maxY = -Infinity;
-  let topPoints = [];
-  profile.forEach(p => {
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  });
-  // Width at top (within 5px of minY)
-  const topW = profile.filter(p => p.y <= minY + 5).reduce((max, p) => Math.max(max, p.x), 0)
-              - profile.filter(p => p.y <= minY + 5).reduce((min, p) => Math.min(min, p.x), 9999);
-  // Depth
-  const depth = maxY - minY;
-  return {
-    nameRu: name || 'Custom',
-    vWidth: Math.round(topW),
-    height: Math.round(depth * 2), // Approximate matrix height
-    maxAngle: 140,
-    profile: profile // Store drawn points
-  };
+// ═══════════════════════════════════════════════════════════════
+// ПОЛУЧЕНИЕ ИНСТРУМЕНТА ПО ИНДЕКСУ (стандартный ли, свой ли)
+// ═══════════════════════════════════════════════════════════════
+function getDieByIndex(idx) {
+  if (idx === undefined || idx === null || isNaN(idx)) idx = 0;
+  if (idx >= DIES.length) {
+    const tools = loadCustomTools();
+    return tools.customDies[idx - DIES.length] || null;
+  }
+  return DIES[idx] || null;
+}
+
+function getPunchByIndex(idx) {
+  if (idx === undefined || idx === null || isNaN(idx)) idx = 1;
+  if (idx >= PUNCHES.length) {
+    const tools = loadCustomTools();
+    return tools.customPunches[idx - PUNCHES.length] || null;
+  }
+  return PUNCHES[idx] || null;
 }
 
 const PRESET_SHAPES = [
