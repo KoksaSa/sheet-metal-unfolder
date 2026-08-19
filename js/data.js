@@ -67,6 +67,71 @@ const PUNCHES = [
   { id: 'R10', nameRu: 'R10', nameEn: 'R10', radius: 10, maxAngle: 90 }
 ];
 
+// ==================== CUSTOM TOOLS (USER DEFINED) ====================
+function loadCustomTools() {
+  try {
+    const raw = localStorage.getItem('custom-tools');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { customDies: [], customPunches: [] };
+}
+
+function saveCustomTools(tools) {
+  localStorage.setItem('custom-tools', JSON.stringify(tools));
+}
+
+function addCustomDie(die) {
+  const tools = loadCustomTools();
+  die.id = 'CUST-D-' + Date.now();
+  die.isCustom = true;
+  tools.customDies.push(die);
+  saveCustomTools(tools);
+}
+
+function addCustomPunch(punch) {
+  const tools = loadCustomTools();
+  punch.id = 'CUST-P-' + Date.now();
+  punch.isCustom = true;
+  tools.customPunches.push(punch);
+  saveCustomTools(tools);
+}
+
+function deleteCustomDie(id) {
+  const tools = loadCustomTools();
+  tools.customDies = tools.customDies.filter(d => d.id !== id);
+  saveCustomTools(tools);
+}
+
+function deleteCustomPunch(id) {
+  const tools = loadCustomTools();
+  tools.customPunches = tools.customPunches.filter(p => p.id !== id);
+  saveCustomTools(tools);
+}
+
+// Convert profile points to die/punch parameters
+function profileToParams(profile, name) {
+  if (!profile || profile.length < 3) return null;
+  // Find top width (widest point at top)
+  let minY = Infinity, maxY = -Infinity;
+  let topPoints = [];
+  profile.forEach(p => {
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+  // Width at top (within 5px of minY)
+  const topW = profile.filter(p => p.y <= minY + 5).reduce((max, p) => Math.max(max, p.x), 0)
+              - profile.filter(p => p.y <= minY + 5).reduce((min, p) => Math.min(min, p.x), 9999);
+  // Depth
+  const depth = maxY - minY;
+  return {
+    nameRu: name || 'Custom',
+    vWidth: Math.round(topW),
+    height: Math.round(depth * 2), // Approximate matrix height
+    maxAngle: 140,
+    profile: profile // Store drawn points
+  };
+}
+
 const PRESET_SHAPES = [
   { nameRu: 'L-образный', nameEn: 'L-shape', icon: 'L', points: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: -60 }] },
   { nameRu: 'U-образный', nameEn: 'U-shape', icon: 'U', points: [{ x: 0, y: 0 }, { x: 120, y: 0 }, { x: 120, y: -80 }, { x: 0, y: -80 }] },

@@ -65,6 +65,10 @@ function init() {
   applyTheme();
   S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 };
 
+  // Force hide dialog on load (defensive)
+  const overlay = document.getElementById('dialog-overlay');
+  if (overlay) overlay.classList.add('hidden');
+
   // Start resize observer after canvases exist
   const canvasCont = document.getElementById('canvas-container');
   const unfoldCont = document.getElementById('unfold-container');

@@ -74,14 +74,393 @@ function showDxfOptions() {
 
 function showDialog(html, extraClass) {
   const box = document.getElementById('dialog-content');
+  const overlay = document.getElementById('dialog-overlay');
   if (!html || html.trim() === '') return; // Prevent empty dialogs
+  if (!overlay) return; // Dialog not in DOM yet
   box.innerHTML = html;
   box.className = extraClass ? 'dialog-box ' + extraClass : 'dialog-box';
-  document.getElementById('dialog-overlay').classList.remove('hidden');
+  overlay.classList.remove('hidden');
 }
 
 function closeDialog() {
   document.getElementById('dialog-overlay').classList.add('hidden');
+}
+
+// ==================== CUSTOM DIE DIALOG ====================
+// Canvas state for drawing die profile
+let _dieCanvas = null, _dieCtx = null, _diePoints = [];
+const DIE_SCALE = 2; // 1 pixel = 0.5mm
+
+function initDieCanvas() {
+  const cv = document.getElementById('cust-die-canvas');
+  if (!cv) return;
+  _dieCanvas = cv;
+  _dieCtx = cv.getContext('2d');
+  _diePoints = [];
+  cv.onmousemove = function(e) {
+    const rect = cv.getBoundingClientRect();
+    const mx = Math.round((e.clientX - rect.left) / 10) * 10;
+    const my = Math.round((e.clientY - rect.top) / 10) * 10;
+    drawDieProfile(mx, my);
+  };
+  cv.onmouseleave = function() { drawDieProfile(); };
+  cv.onclick = function(e) {
+    const rect = cv.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left) / 10) * 10;
+    const y = Math.round((e.clientY - rect.top) / 10) * 10;
+    // Snap to horizontal or vertical from last point
+    if (_diePoints.length > 0) {
+      const last = _diePoints[_diePoints.length - 1];
+      const dx = Math.abs(x - last.x);
+      const dy = Math.abs(y - last.y);
+      if (dx < dy) x = last.x; // snap horizontal
+      else y = last.y; // snap vertical
+    }
+    _diePoints.push({ x, y });
+    drawDieProfile();
+  };
+  drawDieProfile();
+}
+
+function drawDieProfile(mouseX, mouseY) {
+  if (!_dieCtx) return;
+  const w = _dieCanvas.width, h = _dieCanvas.height;
+  _dieCtx.clearRect(0, 0, w, h);
+  // Draw grid
+  _dieCtx.strokeStyle = '#e5e7eb'; _dieCtx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(x, 0); _dieCtx.lineTo(x, h); _dieCtx.stroke(); }
+  for (let y = 0; y < h; y += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(0, y); _dieCtx.lineTo(w, y); _dieCtx.stroke(); }
+  // Draw profile points
+  if (_diePoints.length === 0) {
+    _dieCtx.fillStyle = '#9ca3af'; _dieCtx.font = '11px sans-serif'; _dieCtx.textAlign = 'center';
+    _dieCtx.fillText(t('clickToDraw'), w/2, h/2);
+    return;
+  }
+  // Draw line connecting points
+  _dieCtx.strokeStyle = '#3b82f6'; _dieCtx.lineWidth = 2; _dieCtx.beginPath();
+  _diePoints.forEach((p, i) => { i === 0 ? _dieCtx.moveTo(p.x, p.y) : _dieCtx.lineTo(p.x, p.y); });
+  _dieCtx.stroke();
+  // Draw points
+  _diePoints.forEach((p, i) => {
+    _dieCtx.fillStyle = '#1d4ed8'; _dieCtx.beginPath();
+    _dieCtx.arc(p.x, p.y, 4, 0, Math.PI * 2); _dieCtx.fill();
+    _dieCtx.fillStyle = '#fff'; _dieCtx.font = '9px sans-serif'; _dieCtx.textAlign = 'center';
+    _dieCtx.fillText(i + 1, p.x, p.y - 7);
+  });
+  // Draw dimensions
+  if (_diePoints.length >= 2) {
+    const minX = Math.min(..._diePoints.map(p => p.x));
+    const maxX = Math.max(..._diePoints.map(p => p.x));
+    const minY = Math.min(..._diePoints.map(p => p.y));
+    const maxY = Math.max(..._diePoints.map(p => p.y));
+    const wmm = ((maxX - minX) / DIE_SCALE).toFixed(1);
+    const hmm = ((maxY - minY) / DIE_SCALE).toFixed(1);
+    _dieCtx.fillStyle = '#1f2937'; _dieCtx.font = '10px sans-serif'; _dieCtx.textAlign = 'left';
+    _dieCtx.fillText('V=' + wmm + 'мм  H=' + hmm + 'мм', 5, h - 5);
+  }
+  // Draw crosshair
+  if (mouseX !== undefined && mouseY !== undefined) {
+    _dieCtx.strokeStyle = '#ef4444'; _dieCtx.lineWidth = 1; _dieCtx.setLineDash([4, 4]);
+    _dieCtx.beginPath(); _dieCtx.moveTo(mouseX, 0); _dieCtx.lineTo(mouseX, h); _dieCtx.stroke();
+    _dieCtx.beginPath(); _dieCtx.moveTo(0, mouseY); _dieCtx.lineTo(w, mouseY); _dieCtx.stroke();
+    _dieCtx.setLineDash([]);
+  }
+}
+
+function clearDieProfile() {
+  _diePoints = []; drawDieProfile();
+}
+
+function showCustomDieDialog() {
+  const tools = loadCustomTools();
+  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-blue-600"></i>' + t('customDie') + '</h3>';
+  h += '<div class="space-y-2">';
+  h += '<div><label class="text-xs font-medium">' + t('customDieName') + '</label><input type="text" id="cust-die-name" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+  // Canvas for drawing die profile
+  h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('drawProfile') + '</label>';
+  h += '<div class="relative border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800">';
+  h += '<canvas id="cust-die-canvas" width="300" height="150" class="cursor-crosshair"></canvas>';
+  h += '<div class="absolute top-1 right-1 flex gap-1">';
+  h += '<button onclick="clearDieProfile()" class="text-[9px] px-2 py-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 rounded border border-red-200 dark:border-red-800">' + t('clear') + '</button>';
+  h += '</div></div>';
+  h += '<p class="text-[9px] text-gray-400">' + t('drawProfileHint') + '</p>';
+  h += '</div>';
+  h += '</div>';
+  // List existing custom dies
+  if (tools.customDies.length > 0) {
+    h += '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + t('customDiesList') + '</p>';
+    tools.customDies.forEach((d, i) => {
+      h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
+      h += '<span class="font-mono">' + d.nameRu + ' (V' + d.vWidth + ' H' + d.height + ')</span>';
+      h += '<button onclick="deleteCustomDie(\'' + d.id + '\');showCustomDieDialog();" class="text-red-500 hover:text-red-700 px-1">×</button>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="flex justify-end gap-2 mt-4"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
+  h += '<button onclick="applyCustomDie()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
+  showDialog(h);
+  lucide.createIcons();
+  setTimeout(() => { const el = document.getElementById('cust-die-name'); if (el) el.focus(); }, 100);
+  setTimeout(initDieCanvas, 150);
+}
+
+function applyCustomDie() {
+  const nameRu = document.getElementById('cust-die-name').value.trim() || 'Custom Die';
+  const profile = _diePoints.map(p => ({ x: parseFloat((p.x / DIE_SCALE).toFixed(1)), y: parseFloat((p.y / DIE_SCALE).toFixed(1)) }));
+  if (profile.length < 3) { toast(t('needMorePoints'), 'error'); return; }
+  // Calculate dimensions from profile
+  const minX = Math.min(...profile.map(p => p.x));
+  const maxX = Math.max(...profile.map(p => p.x));
+  const minY = Math.min(...profile.map(p => p.y));
+  const maxY = Math.max(...profile.map(p => p.y));
+  const vWidth = Math.round(maxX - minX);
+  const height = Math.round((maxY - minY) * 2);
+  addCustomDie({ nameRu, vWidth, height, maxAngle: 140, profile });
+  closeDialog();
+  doUnfold();
+  renderAll();
+}
+
+// ==================== CUSTOM PUNCH DIALOG ====================
+let _punchCanvas = null, _punchCtx = null, _punchPoints = [];
+const PUNCH_SCALE = 2;
+
+function initPunchCanvas() {
+  const cv = document.getElementById('cust-punch-canvas');
+  if (!cv) return;
+  _punchCanvas = cv;
+  _punchCtx = cv.getContext('2d');
+  _punchPoints = [];
+  cv.onmousemove = function(e) {
+    const rect = cv.getBoundingClientRect();
+    const mx = Math.round((e.clientX - rect.left) / 10) * 10;
+    const my = Math.round((e.clientY - rect.top) / 10) * 10;
+    drawPunchProfile(mx, my);
+  };
+  cv.onmouseleave = function() { drawPunchProfile(); };
+  cv.onclick = function(e) {
+    const rect = cv.getBoundingClientRect();
+    let x = Math.round((e.clientX - rect.left) / 10) * 10;
+    let y = Math.round((e.clientY - rect.top) / 10) * 10;
+    if (_punchPoints.length > 0) {
+      const last = _punchPoints[_punchPoints.length - 1];
+      const dx = Math.abs(x - last.x);
+      const dy = Math.abs(y - last.y);
+      if (dx < dy) x = last.x;
+      else y = last.y;
+    }
+    _punchPoints.push({ x, y });
+    drawPunchProfile();
+  };
+  drawPunchProfile();
+}
+
+function drawPunchProfile(mouseX, mouseY) {
+  if (!_punchCtx) return;
+  const w = _punchCanvas.width, h = _punchCanvas.height;
+  _punchCtx.clearRect(0, 0, w, h);
+  _punchCtx.strokeStyle = '#e5e7eb'; _punchCtx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 20) { _punchCtx.beginPath(); _punchCtx.moveTo(x, 0); _punchCtx.lineTo(x, h); _punchCtx.stroke(); }
+  for (let y = 0; y < h; y += 20) { _punchCtx.beginPath(); _punchCtx.moveTo(0, y); _punchCtx.lineTo(w, y); _punchCtx.stroke(); }
+  if (_punchPoints.length === 0) {
+    _punchCtx.fillStyle = '#9ca3af'; _punchCtx.font = '11px sans-serif'; _punchCtx.textAlign = 'center';
+    _punchCtx.fillText(t('clickToDraw'), w/2, h/2);
+    return;
+  }
+  _punchCtx.strokeStyle = '#ef4444'; _punchCtx.lineWidth = 2; _punchCtx.beginPath();
+  _punchPoints.forEach((p, i) => { i === 0 ? _punchCtx.moveTo(p.x, p.y) : _punchCtx.lineTo(p.x, p.y); });
+  _punchCtx.stroke();
+  _punchPoints.forEach((p, i) => {
+    _punchCtx.fillStyle = '#dc2626'; _punchCtx.beginPath();
+    _punchCtx.arc(p.x, p.y, 4, 0, Math.PI * 2); _punchCtx.fill();
+    _punchCtx.fillStyle = '#fff'; _punchCtx.font = '9px sans-serif'; _punchCtx.textAlign = 'center';
+    _punchCtx.fillText(i + 1, p.x, p.y - 7);
+  });
+  // Draw dimensions
+  if (_punchPoints.length >= 2) {
+    const minX = Math.min(..._punchPoints.map(p => p.x));
+    const maxX = Math.max(..._punchPoints.map(p => p.x));
+    const minY = Math.min(..._punchPoints.map(p => p.y));
+    const wmm = ((maxX - minX) / PUNCH_SCALE).toFixed(1);
+    const hmm = ((maxY - minY) / PUNCH_SCALE).toFixed(1);
+    _punchCtx.fillStyle = '#1f2937'; _punchCtx.font = '10px sans-serif'; _punchCtx.textAlign = 'left';
+    _punchCtx.fillText('R=' + wmm + 'мм  H=' + hmm + 'мм', 5, h - 5);
+  }
+  // Crosshair
+  if (mouseX !== undefined && mouseY !== undefined) {
+    _punchCtx.strokeStyle = '#ef4444'; _punchCtx.lineWidth = 1; _punchCtx.setLineDash([4, 4]);
+    _punchCtx.beginPath(); _punchCtx.moveTo(mouseX, 0); _punchCtx.lineTo(mouseX, h); _punchCtx.stroke();
+    _punchCtx.beginPath(); _punchCtx.moveTo(0, mouseY); _punchCtx.lineTo(w, mouseY); _punchCtx.stroke();
+    _punchCtx.setLineDash([]);
+  }
+}
+
+function clearPunchProfile() {
+  _punchPoints = []; drawPunchProfile();
+}
+
+function showCustomPunchDialog() {
+  const tools = loadCustomTools();
+  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-red-600"></i>' + t('customPunch') + '</h3>';
+  h += '<div class="space-y-2">';
+  h += '<div><label class="text-xs font-medium">' + t('customPunchName') + '</label><input type="text" id="cust-punch-name" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+  h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('drawProfile') + '</label>';
+  h += '<div class="relative border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800">';
+  h += '<canvas id="cust-punch-canvas" width="300" height="150" class="cursor-crosshair"></canvas>';
+  h += '<div class="absolute top-1 right-1 flex gap-1">';
+  h += '<button onclick="clearPunchProfile()" class="text-[9px] px-2 py-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 rounded border border-red-200 dark:border-red-800">' + t('clear') + '</button>';
+  h += '</div></div>';
+  h += '<p class="text-[9px] text-gray-400">' + t('drawProfileHint') + '</p>';
+  h += '</div>';
+  h += '</div>';
+  if (tools.customPunches.length > 0) {
+    h += '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + t('customPunchesList') + '</p>';
+    tools.customPunches.forEach((p, i) => {
+      h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
+      h += '<span class="font-mono">' + p.nameRu + ' (R' + p.radius + ')</span>';
+      h += '<button onclick="deleteCustomPunch(\'' + p.id + '\');showCustomPunchDialog();" class="text-red-500 hover:text-red-700 px-1">×</button>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="flex justify-end gap-2 mt-4"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
+  h += '<button onclick="applyCustomPunch()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
+  showDialog(h);
+  lucide.createIcons();
+  setTimeout(() => { const el = document.getElementById('cust-punch-name'); if (el) el.focus(); }, 100);
+  setTimeout(initPunchCanvas, 150);
+}
+
+function applyCustomPunch() {
+  const nameRu = document.getElementById('cust-punch-name').value.trim() || 'Custom Punch';
+  const profile = _punchPoints.map(p => ({ x: parseFloat((p.x / PUNCH_SCALE).toFixed(1)), y: parseFloat((p.y / PUNCH_SCALE).toFixed(1)) }));
+  if (profile.length < 2) { toast(t('needMorePoints'), 'error'); return; }
+  const minX = Math.min(...profile.map(p => p.x));
+  const maxX = Math.max(...profile.map(p => p.x));
+  const radius = Math.round((maxX - minX) * 10) / 10;
+  addCustomPunch({ nameRu, radius, maxAngle: 90, profile });
+  closeDialog();
+  doUnfold();
+  renderAll();
+}
+
+// ==================== HEM DIALOG ====================
+
+function drawDieProfile() {
+  if (!_dieCtx) return;
+  const w = _dieCanvas.width, h = _dieCanvas.height;
+  _dieCtx.clearRect(0, 0, w, h);
+  // Draw grid
+  _dieCtx.strokeStyle = '#e5e7eb'; _dieCtx.lineWidth = 0.5;
+  for (let x = 0; x < w; x += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(x, 0); _dieCtx.lineTo(x, h); _dieCtx.stroke(); }
+  for (let y = 0; y < h; y += 20) { _dieCtx.beginPath(); _dieCtx.moveTo(0, y); _dieCtx.lineTo(w, y); _dieCtx.stroke(); }
+  // Draw profile points
+  if (_diePoints.length === 0) {
+    _dieCtx.fillStyle = '#9ca3af'; _dieCtx.font = '11px sans-serif'; _dieCtx.textAlign = 'center';
+    _dieCtx.fillText(t('clickToDraw'), w/2, h/2);
+    return;
+  }
+  // Draw line connecting points
+  _dieCtx.strokeStyle = '#3b82f6'; _dieCtx.lineWidth = 2; _dieCtx.beginPath();
+  _diePoints.forEach((p, i) => { i === 0 ? _dieCtx.moveTo(p.x, p.y) : _dieCtx.lineTo(p.x, p.y); });
+  _dieCtx.stroke();
+  // Draw points
+  _diePoints.forEach((p, i) => {
+    _dieCtx.fillStyle = '#1d4ed8'; _dieCtx.beginPath();
+    _dieCtx.arc(p.x, p.y, 4, 0, Math.PI * 2); _dieCtx.fill();
+    _dieCtx.fillStyle = '#fff'; _dieCtx.font = '9px sans-serif'; _dieCtx.textAlign = 'center';
+    _dieCtx.fillText(i + 1, p.x, p.y - 7);
+  });
+}
+
+function clearDieProfile() {
+  _diePoints = []; drawDieProfile();
+}
+
+function showCustomDieDialog() {
+  const tools = loadCustomTools();
+  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="hammer" class="h-4 w-4 text-blue-600"></i>' + t('customDie') + '</h3>';
+  h += '<div class="space-y-2">';
+  h += '<div><label class="text-xs font-medium">' + t('customDieName') + '</label><input type="text" id="cust-die-name" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+  // Canvas for drawing die profile
+  h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('drawProfile') + '</label>';
+  h += '<div class="relative border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800">';
+  h += '<canvas id="cust-die-canvas" width="300" height="150" class="cursor-crosshair"></canvas>';
+  h += '<div class="absolute top-1 right-1 flex gap-1">';
+  h += '<button onclick="clearDieProfile()" class="text-[9px] px-2 py-0.5 bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 rounded border border-red-200 dark:border-red-800">' + t('clear') + '</button>';
+  h += '</div></div>';
+  h += '<p class="text-[9px] text-gray-400">' + t('drawProfileHint') + '</p>';
+  h += '</div>';
+  h += '</div>';
+  // List existing custom dies
+  if (tools.customDies.length > 0) {
+    h += '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + t('customDiesList') + '</p>';
+    tools.customDies.forEach((d, i) => {
+      h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
+      h += '<span class="font-mono">' + d.nameRu + ' (V' + d.vWidth + ' H' + d.height + ')</span>';
+      h += '<button onclick="deleteCustomDie(\'' + d.id + '\');showCustomDieDialog();" class="text-red-500 hover:text-red-700 px-1">×</button>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="flex justify-end gap-2 mt-4"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
+  h += '<button onclick="applyCustomDie()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('add') + '</button></div>';
+  showDialog(h);
+  lucide.createIcons();
+  setTimeout(() => { const el = document.getElementById('cust-die-name'); if (el) el.focus(); }, 100);
+  // Init canvas after dialog shows
+  setTimeout(initDieCanvas, 150);
+}
+
+function applyCustomDie() {
+  const nameRu = document.getElementById('cust-die-name').value.trim() || 'V' + document.getElementById('cust-die-v').value;
+  const vWidth = parseFloat(document.getElementById('cust-die-v').value);
+  const height = parseFloat(document.getElementById('cust-die-height').value);
+  const maxAngle = parseFloat(document.getElementById('cust-die-angle').value);
+  if (isNaN(vWidth) || isNaN(height) || isNaN(maxAngle)) { toast('Ошибка ввода', 'error'); return; }
+  addCustomDie({ nameRu, vWidth, height, maxAngle });
+  closeDialog();
+  doUnfold();
+  renderAll();
+}
+
+// ==================== CUSTOM PUNCH DIALOG ====================
+function showCustomPunchDialog() {
+  const tools = loadCustomTools();
+  let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><i data-lucide="settings" class="h-4 w-4 text-blue-600"></i>' + t('customPunch') + '</h3>';
+  h += '<div class="space-y-2">';
+  h += '<div><label class="text-xs font-medium">' + t('customPunchName') + '</label><input type="text" id="cust-punch-name" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+  h += '<div><label class="text-xs font-medium">' + t('customPunchRadius') + ' (мм)</label><input type="number" id="cust-punch-radius" min="0.3" max="50" step="0.5" value="2" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+  h += '<div><label class="text-xs font-medium">' + t('customPunchMaxAngle') + ' (°)</label><input type="number" id="cust-punch-angle" min="30" max="180" step="5" value="90" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-1"></div>';
+  h += '</div>';
+  // List existing custom punches
+  if (tools.customPunches.length > 0) {
+    h += '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700"><p class="text-[10px] font-semibold text-gray-500 mb-2">' + t('customPunchesList') + '</p>';
+    tools.customPunches.forEach((p, i) => {
+      h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
+      h += '<span class="font-mono">' + p.nameRu + ' (R' + p.radius + ')</span>';
+      h += '<button onclick="deleteCustomPunch(\'' + p.id + '\');showCustomPunchDialog();" class="text-red-500 hover:text-red-700 px-1">×</button>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="flex justify-end gap-2 mt-4"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
+  h += '<button onclick="applyCustomPunch()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('add') + '</button></div>';
+  showDialog(h);
+  lucide.createIcons();
+  setTimeout(() => { const el = document.getElementById('cust-punch-name'); if (el) el.focus(); }, 100);
+}
+
+function applyCustomPunch() {
+  const nameRu = document.getElementById('cust-punch-name').value.trim() || 'R' + document.getElementById('cust-punch-radius').value;
+  const radius = parseFloat(document.getElementById('cust-punch-radius').value);
+  const maxAngle = parseFloat(document.getElementById('cust-punch-angle').value);
+  if (isNaN(radius) || isNaN(maxAngle)) { toast('Ошибка ввода', 'error'); return; }
+  addCustomPunch({ nameRu, radius, maxAngle });
+  closeDialog();
+  doUnfold();
+  renderAll();
 }
 
 // ==================== HEM DIALOG ====================
@@ -282,12 +661,26 @@ function renderMetalParams() {
   DIES.forEach((d, i) => {
     h += '<option value="' + i + '"' + (i === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameEn : d.nameRu) + ' (H' + d.height + ')</option>';
   });
+  const tools = loadCustomTools();
+  tools.customDies.forEach((d, i) => {
+    const idx = DIES.length + i;
+    h += '<option value="' + idx + '"' + (idx === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameRu : d.nameRu) + ' (V' + d.vWidth + ' H' + d.height + ') ★</option>';
+  });
   h += '</select></div>';
   h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="setMetalWithUndo({punchIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
   PUNCHES.forEach((p, i) => {
     h += '<option value="' + i + '"' + (i === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameEn : p.nameRu) + '</option>';
   });
+  tools.customPunches.forEach((p, i) => {
+    const idx = PUNCHES.length + i;
+    h += '<option value="' + idx + '"' + (idx === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameRu : p.nameRu) + ' (R' + p.radius + ') ★</option>';
+  });
   h += '</select></div>';
+  h += '</div>';
+  // Custom tools buttons
+  h += '<div class="grid grid-cols-2 gap-1.5 pt-1">';
+  h += '<button onclick="showCustomDieDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customDie') + '</button>';
+  h += '<button onclick="showCustomPunchDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customPunch') + '</button>';
   h += '</div>';
   // Checkbox: die height check
   h += '<div class="flex items-center justify-between pt-1"><label class="text-[10px] text-gray-500 flex items-center gap-1"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('checkDieHeight') + '</label><div class="switch' + (S.checkDieHeight ? ' active' : '') + '" onclick="S.checkDieHeight=!S.checkDieHeight;doUnfold();renderAll()"></div></div>';
@@ -504,8 +897,19 @@ function renderUnfoldInfo() {
   const wt = calcWeight(area, S.metal.thickness, S.metal.metalTypeIndex);
   const fmtW = wt < .001 ? (wt * 1000).toFixed(1) + ' ' + t('weightG') : wt < 1 ? (wt * 1000).toFixed(0) + ' ' + t('weightG') : wt.toFixed(3) + ' ' + t('weightKg');
   const density = getMetalDensity(S.metal.metalTypeIndex, S.metal.thickness) * 1e9;
-  const die = DIES[S.metal.dieIndex] || DIES[0];
-  const punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  // Get die/punch (custom or preset)
+  const tools = loadCustomTools();
+  let die, punch;
+  if (S.metal.dieIndex >= DIES.length) {
+    die = tools.customDies[S.metal.dieIndex - DIES.length];
+  } else {
+    die = DIES[S.metal.dieIndex] || DIES[0];
+  }
+  if (S.metal.punchIndex >= PUNCHES.length) {
+    punch = tools.customPunches[S.metal.punchIndex - PUNCHES.length];
+  } else {
+    punch = PUNCHES[S.metal.punchIndex] || PUNCHES[0];
+  }
   // Short flanges
   const minFlange = S.metal.bendRadius * 2 + S.metal.thickness;
   let shortCount = 0;
