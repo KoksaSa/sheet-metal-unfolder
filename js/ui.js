@@ -1,4 +1,10 @@
 // ==================== DIALOGS ====================
+// Ensure dialog is hidden immediately (before DOMContentLoaded)
+(function() {
+  const overlay = document.getElementById('dialog-overlay');
+  if (overlay) overlay.classList.add('hidden');
+})();
+
 function showShortcuts() {
   const s = S.lang;
   let h = '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>' + t('shortcuts') + '</h3><div class="space-y-2">';
@@ -68,6 +74,7 @@ function showDxfOptions() {
 
 function showDialog(html, extraClass) {
   const box = document.getElementById('dialog-content');
+  if (!html || html.trim() === '') return; // Prevent empty dialogs
   box.innerHTML = html;
   box.className = extraClass ? 'dialog-box ' + extraClass : 'dialog-box';
   document.getElementById('dialog-overlay').classList.remove('hidden');
