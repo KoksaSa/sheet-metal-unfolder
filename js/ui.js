@@ -79,12 +79,16 @@ function showDialog(html, extraClass) {
   if (!overlay) return;
   box.innerHTML = html;
   box.className = extraClass ? 'dialog-box ' + extraClass : 'dialog-box';
+  overlay.classList.remove('hidden'); // важно: снимаем !important-правило из CSS
   overlay.style.display = 'flex';
 }
 
 function closeDialog() {
   const overlay = document.getElementById('dialog-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.style.display = 'none';
+  }
 }
 
 // ==================== CUSTOM TOOL IMPORT (DXF) ====================
