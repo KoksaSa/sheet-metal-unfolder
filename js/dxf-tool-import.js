@@ -245,3 +245,34 @@ function profileFromDXF(dxfText) {
     minX, maxX, minY, maxY
   };
 }
+
+/**
+ * Оценка ширины ручья V-матрицы по профилю.
+ * Ищет наибольший разрыв между точками на верхней границе контура —
+ * это и есть "рот" V-канавки (расстояние между верхними концами скосов).
+ * @param {{chains:Array, minX:number, maxX:number, maxY:number, width:number}} profile
+ * @returns {number|null} ширина ручья в мм или null, если определить нельзя
+ */
+function estimateDieVWidth(profile) {
+  if (!profile || !profile.chains) return null;
+  const EPS = 1e-6;
+  const maxY = profile.maxY;
+  // Точки на верхней границе контура (должны быть верхние грани матрицы)
+  const xs = [];
+  profile.chains.forEach(chain => {
+    chain.forEach(p => {
+      if (Math.abs(p.y - maxY) < EPS) xs.push(p.x);
+    });
+  });
+  if (xs.length < 2) return null;
+  xs.sort((a, b) => a - b);
+  // Наибольший зазор между соседними x — это V-отверстие
+  let gap = 0;
+  for (let i = 0; i < xs.length - 1; i++) {
+    const g = xs[i + 1] - xs[i];
+    if (g > gap) gap = g;
+  }
+  // Зазор должен быть заметной частью ширины (но не всей шириной — иначе контур разорван)
+  if (gap < profile.width * 0.02 || gap > profile.width * 0.95) return null;
+  return gap;
+}

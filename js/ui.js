@@ -154,19 +154,17 @@ function showToolImportDialog(type) {
   h += '<div id="tool-dims" class="mt-1 text-[10px] font-mono text-gray-500">\u2014</div>';
   h += '</div>';
 
-  // Параметры инструмента (ручей/радиус, макс. угол)
+  // Параметры инструмента: V — ручей, S — ширина, H — высота, макс. угол
   h += '<div class="rounded-md border border-gray-200 dark:border-gray-700 p-2"><div class="text-[10px] font-semibold text-gray-500 mb-1.5">' + t('toolParams') + '</div>';
   h += '<div class="grid grid-cols-2 gap-2">';
   if (isDie) {
-    h += '<div><label class="text-[10px] text-gray-500">' + t('customDieVWidth') + '</label><input type="number" id="tool-vwidth" min="1" step="0.5" placeholder="8" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
-    h += '<div><label class="text-[10px] text-gray-500">' + t('customDieHeight') + '</label><input type="number" id="tool-height" min="1" step="0.5" placeholder="30" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+    h += '<div><label class="text-[10px] text-gray-500">' + t('dieVLabel') + '</label><input type="number" id="tool-vwidth" min="1" step="0.5" placeholder="8" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
   } else {
-    h += '<div><label class="text-[10px] text-gray-500">' + t('customPunchRadius') + '</label><input type="number" id="tool-radius" min="0.1" step="0.1" placeholder="1.5" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
-    h += '<div><label class="text-[10px] text-gray-500">' + t('customPunchMaxAngle') + '</label><input type="number" id="tool-maxangle" min="1" max="180" step="1" value="90" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+    h += '<div><label class="text-[10px] text-gray-500">' + t('punchRLabel') + '</label><input type="number" id="tool-radius" min="0.1" step="0.1" placeholder="1.5" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
   }
-  if (isDie) {
-    h += '<div><label class="text-[10px] text-gray-500">' + t('customDieMaxAngle') + '</label><input type="number" id="tool-maxangle" min="1" max="180" step="1" value="140" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
-  }
+  h += '<div><label class="text-[10px] text-gray-500">' + t('toolSLabel') + '</label><input type="number" id="tool-swidth" min="1" step="0.5" placeholder="40" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+  h += '<div><label class="text-[10px] text-gray-500">' + t('toolHLabel') + '</label><input type="number" id="tool-height" min="1" step="0.5" placeholder="30" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+  h += '<div><label class="text-[10px] text-gray-500">' + t('toolMaxAngleLabel') + '</label><input type="number" id="tool-maxangle" min="1" max="180" step="1" value="' + (isDie ? '140' : '90') + '" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
   h += '</div></div>';
 
   // Список существующих
@@ -176,7 +174,7 @@ function showToolImportDialog(type) {
       h += '<div class="flex items-center justify-between text-[10px] py-1 border-b border-gray-100 dark:border-gray-800">';
       h += '<div class="flex items-center gap-2 min-w-0">';
       h += '<div class="w-10 h-8 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 shrink-0 overflow-hidden">' + drawProfileSVG(tool.profile, 40, 32, isDie ? '#3b82f6' : '#ef4444', 2) + '</div>';
-      h += '<span class="font-mono truncate">' + tool.nameRu + '</span>';
+      h += '<div class="min-w-0"><div class="font-mono truncate">' + tool.nameRu + '</div><div class="text-[9px] text-gray-400 font-mono">' + toolSizeLabel(tool, isDie) + '</div></div>';
       h += '</div>';
       h += '<button onclick="' + (isDie ? 'deleteCustomDie' : 'deleteCustomPunch') + '(\'' + tool.id + '\');showCustom' + (isDie ? 'Die' : 'Punch') + 'Dialog();" class="text-red-500 hover:text-red-700 px-1 text-sm leading-none">×</button>';
       h += '</div>';
@@ -219,11 +217,17 @@ async function importToolDXF(input) {
       if (nameEl && !nameEl.value.trim()) {
         nameEl.value = _importFileName.replace(/[_\-\s]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       }
-      // Автозаполнение параметров из габаритов DXF
-      const vwEl = document.getElementById('tool-vwidth');
-      if (vwEl && !vwEl.value) vwEl.value = Math.max(1, Math.round(profile.width));
+      // Автозаполнение параметров из габаритов DXF:
+      // S — ширина инструмента, H — высота, V — автоопределение ручья (для матрицы)
+      const swEl = document.getElementById('tool-swidth');
+      if (swEl && !swEl.value) swEl.value = Math.max(1, Math.round(profile.width));
       const htEl = document.getElementById('tool-height');
       if (htEl && !htEl.value) htEl.value = Math.max(1, Math.round(profile.height));
+      const vwEl = document.getElementById('tool-vwidth');
+      if (vwEl && !vwEl.value) {
+        const vEst = estimateDieVWidth(profile);
+        if (vEst) vwEl.value = Math.max(1, Math.round(vEst));
+      }
       const rdEl = document.getElementById('tool-radius');
       if (rdEl && !rdEl.value) rdEl.value = Math.max(0.5, Math.round(profile.width * 5) / 10);
       return;
@@ -252,23 +256,29 @@ function applyCustomTool() {
       return isNaN(v) || v <= 0 ? fallback : v;
     };
     if (_importType === 'die') {
-      const vWidth = numVal('tool-vwidth', Math.round(profile.width));
+      const vWidth = numVal('tool-vwidth', estimateDieVWidth(profile) || Math.round(profile.width));
+      const swidth = numVal('tool-swidth', Math.round(profile.width));
       const height = numVal('tool-height', Math.round(profile.height));
       const maxAngle = numVal('tool-maxangle', 140);
       addCustomDie({
         nameRu: nameRu || ('V' + vWidth),
         nameEn: nameRu || ('V' + vWidth),
         vWidth: vWidth,
+        swidth: swidth,
         height: height,
         maxAngle: maxAngle,
         profile
       });
     } else {
+      const swidth = numVal('tool-swidth', Math.round(profile.width));
+      const height = numVal('tool-height', Math.round(profile.height));
       const radius = numVal('tool-radius', Math.max(0.5, Math.round(profile.width * 5) / 10));
       const maxAngle = numVal('tool-maxangle', 90);
       addCustomPunch({
         nameRu: nameRu || ('R' + radius),
         nameEn: nameRu || ('R' + radius),
+        swidth: swidth,
+        height: height,
         radius: radius,
         maxAngle: maxAngle,
         profile
@@ -458,6 +468,20 @@ function renderToolButtons() {
 // Для кастомных инструментов рисует импортированный профиль,
 // для стандартных — схематичное изображение по параметрам.
 // ═══════════════════════════════════════════════════════════════
+// Подпись размеров инструмента: V — ручей, S — ширина, H — высота (R для пуансона)
+function toolSizeLabel(tool, isDie) {
+  if (!tool) return '';
+  const parts = [];
+  if (isDie) {
+    if (tool.vWidth && tool.vWidth > 0) parts.push('V' + tool.vWidth);
+  } else {
+    if (tool.radius && tool.radius > 0) parts.push('R' + tool.radius);
+  }
+  if (tool.swidth && tool.swidth > 0) parts.push('S' + tool.swidth);
+  if (tool.height && tool.height > 0) parts.push('H' + tool.height);
+  return parts.length ? '(' + parts.join(' ') + ')' : '';
+}
+
 function toolThumbSVG(tool, kind, w, h) {
   w = w || 70; h = h || 34;
   const pad = 4;
@@ -563,7 +587,7 @@ function renderMetalParams() {
   const tools = loadCustomTools();
   tools.customDies.forEach((d, i) => {
     const idx = DIES.length + i;
-    h += '<option value="' + idx + '"' + (idx === S.metal.dieIndex ? ' selected' : '') + '>' + d.nameRu + ' (V' + d.vWidth + ' H' + d.height + ') ★</option>';
+    h += '<option value="' + idx + '"' + (idx === S.metal.dieIndex ? ' selected' : '') + '>' + d.nameRu + ' ' + toolSizeLabel(d, true) + ' ★</option>';
   });
   h += '</select>';
   h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + toolThumbSVG(die, 'die', 70, 32) + '</div>';
@@ -574,7 +598,7 @@ function renderMetalParams() {
   });
   tools.customPunches.forEach((p, i) => {
     const idx = PUNCHES.length + i;
-    h += '<option value="' + idx + '"' + (idx === S.metal.punchIndex ? ' selected' : '') + '>' + p.nameRu + ' (R' + p.radius + ') ★</option>';
+    h += '<option value="' + idx + '"' + (idx === S.metal.punchIndex ? ' selected' : '') + '>' + p.nameRu + ' ' + toolSizeLabel(p, false) + ' ★</option>';
   });
   h += '</select>';
   h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + toolThumbSVG(punch, 'punch', 70, 32) + '</div>';
