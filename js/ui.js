@@ -273,7 +273,7 @@ function renderMetalParams() {
   h += '<div class="grid grid-cols-2 gap-2">';
   h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('dieSelect') + '</label><select onchange="setMetalWithUndo({dieIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
   DIES.forEach((d, i) => {
-    h += '<option value="' + i + '"' + (i === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameEn : d.nameRu) + '</option>';
+    h += '<option value="' + i + '"' + (i === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameEn : d.nameRu) + ' (H' + d.height + ')</option>';
   });
   h += '</select></div>';
   h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="setMetalWithUndo({punchIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
@@ -281,7 +281,10 @@ function renderMetalParams() {
     h += '<option value="' + i + '"' + (i === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameEn : p.nameRu) + '</option>';
   });
   h += '</select></div>';
-  h += '</div></div>';
+  h += '</div>';
+  // Checkbox: die height check
+  h += '<div class="flex items-center justify-between pt-1"><label class="text-[10px] text-gray-500 flex items-center gap-1"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('checkDieHeight') + '</label><div class="switch' + (S.checkDieHeight ? ' active' : '') + '" onclick="S.checkDieHeight=!S.checkDieHeight;doUnfold();renderAll()"></div></div>';
+  h += '</div>';
   // K-factor
   h += '<div class="space-y-1"><div class="flex items-center justify-between"><label class="text-xs font-medium" title="' + t('kFactorTooltip') + '">' + t('kFactor') + '</label><span id="kf-display" class="text-xs font-mono text-gray-500 tabular-nums">' + S.metal.kFactor.toFixed(2) + '</span></div><input type="range" min="0.1" max="0.7" step="0.01" value="' + S.metal.kFactor + '" oninput="setMetalWithUndo({kFactor:Number(this.value)});document.getElementById(\'kf-display\').textContent=Number(this.value).toFixed(2)" class="w-full"></div>';
   // Width

@@ -39,11 +39,14 @@ function getMetalDensity(mtIdx, thick) {
  * @param {number} segBeforeLen - длина полки до гиба, мм
  * @param {number} segAfterLen - длина полки после гиба, мм
  * @param {number} bendRadius - радиус гиба, мм
- * @param {object} die - матрица {vWidth, maxAngle}
+ * @param {object} die - матрица {vWidth, height, maxAngle}
  * @param {object} punch - пуансон {radius, maxAngle}
+ * @param {boolean} hasBendBefore - есть ли гиб на другом конце полки до
+ * @param {boolean} hasBendAfter - есть ли гиб на другом конце полки после
+ * @param {boolean} checkDieHeight - проверять ли толщину матрицы
  * @returns {{ok: boolean, problems: string[]}} результат проверки
  */
-function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch) {
+function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight) {
   const problems = [];
   const bendDeg = bend.bendAngle * 180 / Math.PI;
 
@@ -69,6 +72,19 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, 
     }
     if (segAfterLen < minFlange) {
       problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм меньше минимальной ' + minFlange.toFixed(1) + ' мм — пуансон врежется в кромку');
+    }
+  }
+
+  // 4. Проверка толщины матрицы: если на полке два гиба (Z, U, ступенька и т.д.),
+  //    полка между ними должна быть достаточно длинной, чтобы матрица поместилась.
+  //    Минимальная полка = (высота матрицы / 2) / sin(угол/2) + V/2
+  if (checkDieHeight && die.height > 0 && half > 0) {
+    const minFlangeBetween = (die.height / 2) / Math.sin(half) + die.vWidth / 2;
+    if (hasBendBefore && segBeforeLen < minFlangeBetween) {
+      problems.push('Полка слева ' + segBeforeLen.toFixed(1) + ' мм: матрица (толщина ' + die.height + ' мм) не поместится между гибами, нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
+    }
+    if (hasBendAfter && segAfterLen < minFlangeBetween) {
+      problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм: матрица (толщина ' + die.height + ' мм) не поместится между гибами, нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
     }
   }
 
@@ -136,15 +152,16 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
   if (die && punch) {
     bends.forEach(b => {
       // Длины полок: длина сегмента минус касательные расстояния соседних гибов
-      let beforeLen = segs[b.segBeforeIndex].length - b.tangentDistance;
       const prevBend = bends.find(bb => bb.segAfterIndex === b.segBeforeIndex);
+      const nextBend = bends.find(bb => bb.segBeforeIndex === b.segAfterIndex);
+      let beforeLen = segs[b.segBeforeIndex].length - b.tangentDistance;
       if (prevBend) beforeLen -= prevBend.tangentDistance;
       let afterLen = segs[b.segAfterIndex].length - b.tangentDistance;
-      const nextBend = bends.find(bb => bb.segBeforeIndex === b.segAfterIndex);
       if (nextBend) afterLen -= nextBend.tangentDistance;
       beforeLen = Math.max(0, beforeLen);
       afterLen = Math.max(0, afterLen);
-      const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch);
+      const checkDH = typeof S !== 'undefined' && S.checkDieHeight;
+      const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH);
       b.feasible = result.ok;
       b.problems = result.problems;
       b.flangeBefore = beforeLen;

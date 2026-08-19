@@ -12,6 +12,7 @@ const S = {
   angleSnap: 'none',
   showDimensions: true,
   showAxisLabels: true,
+  checkDieHeight: true,
   viewport: { offsetX: 0, offsetY: 0, scale: 3 },
   unfoldResult: null,
   autoUnfold: true,
