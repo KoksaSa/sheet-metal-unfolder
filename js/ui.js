@@ -154,9 +154,20 @@ function showToolImportDialog(type) {
   h += '<div id="tool-dims" class="mt-1 text-[10px] font-mono text-gray-500">\u2014</div>';
   h += '</div>';
 
-  // Кнопки
-  h += '<div class="flex justify-end gap-2 mt-1"><button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
-  h += '<button onclick="applyCustomTool()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
+  // Параметры инструмента (ручей/радиус, макс. угол)
+  h += '<div class="rounded-md border border-gray-200 dark:border-gray-700 p-2"><div class="text-[10px] font-semibold text-gray-500 mb-1.5">' + t('toolParams') + '</div>';
+  h += '<div class="grid grid-cols-2 gap-2">';
+  if (isDie) {
+    h += '<div><label class="text-[10px] text-gray-500">' + t('customDieVWidth') + '</label><input type="number" id="tool-vwidth" min="1" step="0.5" placeholder="8" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+    h += '<div><label class="text-[10px] text-gray-500">' + t('customDieHeight') + '</label><input type="number" id="tool-height" min="1" step="0.5" placeholder="30" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+  } else {
+    h += '<div><label class="text-[10px] text-gray-500">' + t('customPunchRadius') + '</label><input type="number" id="tool-radius" min="0.1" step="0.1" placeholder="1.5" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+    h += '<div><label class="text-[10px] text-gray-500">' + t('customPunchMaxAngle') + '</label><input type="number" id="tool-maxangle" min="1" max="180" step="1" value="90" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+  }
+  if (isDie) {
+    h += '<div><label class="text-[10px] text-gray-500">' + t('customDieMaxAngle') + '</label><input type="number" id="tool-maxangle" min="1" max="180" step="1" value="140" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 mt-0.5"></div>';
+  }
+  h += '</div></div>';
 
   // Список существующих
   if (list.length > 0) {
@@ -172,6 +183,11 @@ function showToolImportDialog(type) {
     });
     h += '</div>';
   }
+
+  // Закреплённый футер с кнопками (виден всегда, даже при длинном списке)
+  h += '<div class="sticky bottom-0 -mx-5 -mb-5 px-5 py-3 mt-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 rounded-b-xl">';
+  h += '<button onclick="closeDialog()" class="text-xs h-8 px-3 border border-gray-200 dark:border-gray-700 rounded-md">' + t('cancel') + '</button>';
+  h += '<button onclick="applyCustomTool()" class="text-xs h-8 px-3 bg-blue-600 text-white rounded-md hover:bg-blue-700">' + t('save') + '</button></div>';
 
   h += '</div>';
   showDialog(h);
@@ -203,6 +219,13 @@ async function importToolDXF(input) {
       if (nameEl && !nameEl.value.trim()) {
         nameEl.value = _importFileName.replace(/[_\-\s]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       }
+      // Автозаполнение параметров из габаритов DXF
+      const vwEl = document.getElementById('tool-vwidth');
+      if (vwEl && !vwEl.value) vwEl.value = Math.max(1, Math.round(profile.width));
+      const htEl = document.getElementById('tool-height');
+      if (htEl && !htEl.value) htEl.value = Math.max(1, Math.round(profile.height));
+      const rdEl = document.getElementById('tool-radius');
+      if (rdEl && !rdEl.value) rdEl.value = Math.max(0.5, Math.round(profile.width * 5) / 10);
       return;
     }
     const info = document.getElementById('tool-dxf-info');
@@ -221,25 +244,33 @@ function applyCustomTool() {
     const nameRu = (document.getElementById('tool-name').value || '').trim();
     if (!_importProfile) { toast(t('dxfPleaseImport'), 'error'); return; }
     const profile = _importProfile;
-    // Габариты из DXF
-    const w = Math.max(1, profile.width);
-    const h = Math.max(1, profile.height);
+    // Читаем параметры из полей ввода (заполняются автоматически из DXF, но редактируемы)
+    const numVal = (id, fallback) => {
+      const el = document.getElementById(id);
+      if (!el) return fallback;
+      const v = parseFloat(el.value);
+      return isNaN(v) || v <= 0 ? fallback : v;
+    };
     if (_importType === 'die') {
+      const vWidth = numVal('tool-vwidth', Math.round(profile.width));
+      const height = numVal('tool-height', Math.round(profile.height));
+      const maxAngle = numVal('tool-maxangle', 140);
       addCustomDie({
-        nameRu: nameRu || 'Die ' + (profile.width.toFixed(0) || ''),
-        nameEn: nameRu || 'Die',
-        vWidth: Math.round(w),
-        height: Math.round(h),
-        maxAngle: 140,
+        nameRu: nameRu || ('V' + vWidth),
+        nameEn: nameRu || ('V' + vWidth),
+        vWidth: vWidth,
+        height: height,
+        maxAngle: maxAngle,
         profile
       });
     } else {
-      // Радиус пуансона ≈ половина ширины профиля (вершина)
+      const radius = numVal('tool-radius', Math.max(0.5, Math.round(profile.width * 5) / 10));
+      const maxAngle = numVal('tool-maxangle', 90);
       addCustomPunch({
-        nameRu: nameRu || 'Punch ' + (profile.width.toFixed(1) || ''),
-        nameEn: nameRu || 'Punch',
-        radius: Math.max(0.5, Math.round(profile.width * 5) / 10),
-        maxAngle: 90,
+        nameRu: nameRu || ('R' + radius),
+        nameEn: nameRu || ('R' + radius),
+        radius: radius,
+        maxAngle: maxAngle,
         profile
       });
     }
