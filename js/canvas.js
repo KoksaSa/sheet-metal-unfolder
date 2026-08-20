@@ -976,48 +976,42 @@ function computeFoldedPoints(bendIdx, flip) {
 // Клик по точке гиба сгибает хвост контура в этом месте.
 // ═══════════════════════════════════════════════════════════════
 function computeSimPoints() {
-  if (!S.unfoldResult) return null;
+  if (!S.unfoldResult || !S.points || S.points.length < 2) return null;
   const res = S.unfoldResult;
-  const elements = res.elements || [];
   const bends = res.bendInfos || [];
   const active = Array.isArray(S.simBends) ? S.simBends : [];
 
-  const pts = [{ x: 0, y: 0 }];
+  // Строим согнутый контур каскадно по сегментам исходного профиля.
+  // Каждый активный гиб поворачивает «хвост» ВВЕРХ (на пуансон),
+  // а не вниз (на матрицу). Излом в вершине острый (без фаски),
+  // как в предпросмотре отдельного гиба.
+  const pts = S.points;
+  const out = [{ x: pts[0].x, y: pts[0].y }];
   const bendMarkers = [];
   let angle = 0; // текущее направление контура (0 = вправо)
-  let bendIdx = 0;
+  const bendAtVertex = new Map();
+  bends.forEach((b, idx) => bendAtVertex.set(b.vertexIndex, idx));
 
-  for (const el of elements) {
-    const len = el.type === 'bend' ? el.bendAllowance : el.length;
-    if (el.type === 'bend') {
-      // Точка (вершина) излома в развёртке:
-      const b = bends.find(bb => bb.vertexIndex === el.bendNumber);
-      const td = b ? b.tangentDistance : 0;
-      const cur = pts[pts.length - 1];
-      // Вершина — на расстоянии tangentDistance от начала полки:
-      // именно в этой точке контура при гибке окажется пуансон.
-      const vx = cur.x + Math.cos(angle) * td;
-      const vy = cur.y + Math.sin(angle) * td;
-      bendMarkers.push({ x: vx, y: vy, index: bendIdx, angle: el.angle });
-      // Если гиб активен — поворачиваем направление на deflection
-      if (active.includes(bendIdx)) {
-        const b = bends.find(bb => bb.vertexIndex === el.bendNumber);
-        if (b) angle += b.deflection;
-        else angle += el.angle * (el.direction || 1);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const segLen = dist(pts[i], pts[i + 1]);
+    const cur = out[out.length - 1];
+    const nx = cur.x + Math.cos(angle) * segLen;
+    const ny = cur.y + Math.sin(angle) * segLen;
+    out.push({ x: nx, y: ny });
+
+    // Гиб на вершине i+1
+    const bi = bendAtVertex.get(i + 1);
+    if (bi !== undefined) {
+      bendMarkers.push({ x: nx, y: ny, index: bi, angle });
+      if (active.includes(bi)) {
+        // Знак «−»: deflection измерен так, что положительный поворот —
+        // вниз (на матрицу). Для гибки на пуансон инвертируем знак.
+        angle -= bends[bi].deflection;
       }
-      // Конец зоны гиба — на tangentDistance от вершины в новом направлении
-      pts.push({ x: vx + Math.cos(angle) * td, y: vy + Math.sin(angle) * td });
-      bendIdx++;
-    } else {
-      const cur = pts[pts.length - 1];
-      const dx = Math.cos(angle) * len;
-      const dy = Math.sin(angle) * len;
-      pts.push({ x: cur.x + dx, y: cur.y + dy });
     }
   }
 
-  // Якорь: точка гиба, которая должна стоять в центре V-ручья (0,0).
-  // Последний активный гиб по порядку (или первый маркер, если ещё ничего не согнуто).
+  // Якорь: последний активный гиб (или первый маркер) в центре V-ручья (0,0).
   let anchorIndex = 0;
   for (let i = bendMarkers.length - 1; i >= 0; i--) {
     if (active.includes(bendMarkers[i].index)) { anchorIndex = i; break; }
@@ -1025,11 +1019,11 @@ function computeSimPoints() {
   const anchor = bendMarkers[anchorIndex];
   if (anchor) {
     const dx = -anchor.x, dy = -anchor.y;
-    pts.forEach(p => { p.x += dx; p.y += dy; });
+    out.forEach(p => { p.x += dx; p.y += dy; });
     bendMarkers.forEach(m => { m.x += dx; m.y += dy; });
   }
 
-  return { pts, bendMarkers, bends, anchorIndex };
+  return { pts: out, bendMarkers, bends, anchorIndex };
 }
 
 // Находит центр V-ручья матрицы по зазору на верхней грани DXF-профиля.
