@@ -712,6 +712,31 @@ function drawDrawCanvas() {
   }
 }
 
+// Находит центр V-ручья матрицы по зазору на верхней грани DXF-профиля.
+// Возвращает X-координату центра ручья (или геом. центр если не удалось).
+function findDieGrooveCenter(profile) {
+  if (!profile || !profile.chains) return (profile.minX || 0) + (profile.width || 0) / 2;
+  const EPS = 1e-6;
+  const maxY = profile.maxY;
+  const xs = [];
+  profile.chains.forEach(chain => {
+    chain.forEach(p => {
+      if (Math.abs(p.y - maxY) < EPS) xs.push(p.x);
+    });
+  });
+  if (xs.length < 2) return (profile.minX || 0) + (profile.width || 0) / 2;
+  xs.sort((a, b) => a - b);
+  let gap = 0, gapStart = 0, gapEnd = 0;
+  for (let i = 0; i < xs.length - 1; i++) {
+    const g = xs[i + 1] - xs[i];
+    if (g > gap) { gap = g; gapStart = xs[i]; gapEnd = xs[i + 1]; }
+  }
+  if (gap < (profile.width || 1) * 0.02 || gap > (profile.width || 1) * 0.95) {
+    return (profile.minX || 0) + (profile.width || 0) / 2;
+  }
+  return (gapStart + gapEnd) / 2;
+}
+
 // Рисует матрицу и пуансон в масштабе 1:1 в центре координатной сетки.
 // (0,0) = центр ручья матрицы (ось гиба). Верхняя грань матрицы — на оси X.
 // Пуансон сверху (Y+), матрица снизу (Y-).
@@ -729,8 +754,10 @@ function drawToolsOnCanvas(isDark) {
 
   if (die.profile && die.profile.chains) {
     // Кастомная матрица — рисуем реальный DXF-профиль
-    // Центр по X, верхняя грань на оси X (Y=0), тело вниз (Y-)
-    const offX = -(die.profile.minX + die.profile.width / 2);
+    // Центр V-ручья на (0,0), верхняя грань на оси X (Y=0), тело вниз (Y-)
+    // Находим центр V-ручья по зазору на верхней грани
+    const vCenter = findDieGrooveCenter(die.profile);
+    const offX = -vCenter;
     const offY = -(die.profile.minY + die.profile.height);
     die.profile.chains.forEach(chain => {
       drawCtx.beginPath();
