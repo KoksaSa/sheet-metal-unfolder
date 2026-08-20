@@ -36,17 +36,21 @@ function getMetalDensity(mtIdx, thick) {
  * Проверка возможности гибки на выбранных матрице и пуансоне.
  * Ключевое: пуансон не должен врезаться в кромку металла при гибке.
  * @param {object} bend - объект гиба (bendAngle в радианах)
- * @param {number} segBeforeLen - длина полки до гиба, мм
- * @param {number} segAfterLen - длина полки после гиба, мм
+ * @param {number} segBeforeLen - длина полки до гиба (минус tangentDistance), мм
+ * @param {number} segAfterLen - длина полки после гиба (минус tangentDistance), мм
+ * @param {number} segBeforeFull - полная длина сегмента до гиба, мм
+ * @param {number} segAfterFull - полная длина сегмента после гиба, мм
  * @param {number} bendRadius - радиус гиба, мм
  * @param {object} die - матрица {vWidth, height, maxAngle}
  * @param {object} punch - пуансон {radius, maxAngle}
  * @param {boolean} hasBendBefore - есть ли гиб на другом конце полки до
  * @param {boolean} hasBendAfter - есть ли гиб на другом конце полки после
  * @param {boolean} checkDieHeight - проверять ли высоту матрицы
+ * @param {boolean} prevInward - предыдущий гиб загнул полку вниз (к матрице)
+ * @param {boolean} nextInward - следующий гиб загнёт полку вниз (к матрице)
  * @returns {{ok: boolean, problems: string[], warnings: string[]}} результат проверки
  */
-function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight) {
+function checkBendFeasibility(bend, segBeforeLen, segAfterLen, segBeforeFull, segAfterFull, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight, prevInward, nextInward) {
   const problems = [];
   const warnings = [];
   const bendDeg = bend.bendAngle * 180 / Math.PI;
@@ -76,26 +80,35 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, 
     }
   }
 
-  // 4. Проверка высоты матрицы между гибами — УБРАНА.
-  //    Физика: при гибке уже согнутая полка идёт ВДОЛЬ тела матрицы (вниз),
-  //    а не ВНУТРЬ неё. Матрица стоит под листом, полка свисает рядом.
-  //    Высота матрицы не ограничивает гибку Z- или U-профиля.
-  //    Реальные ограничения покрыты проверками: мин. полка по V-ручью (#3)
-  //    и предупреждение про упор в подложку (#5).
+  // 4. Полка между гибами с согнутой частью ВНИЗ (к матрице):
+  //    минимальная полка = V/2. Если уже согнутая полка (от соседнего гиба,
+  //    направленного вниз/внутрь) мешает сдвинуть деталь до центра ручья —
+  //    гибка невозможна. Используем ПОЛНУЮ длину сегмента (без вычета радиуса).
+  //    prevInward: предыдущий гиб загнул полку до — вниз к матрице.
+  //    curInward + nextBend: текущий гиб загибает полку после — вниз к матрице.
+  const curInward = bend.isInward;
+  const minZFlange = die.vWidth / 2;
+  if (hasBendBefore && prevInward && segBeforeFull < minZFlange) {
+    problems.push('Полка слева ' + segBeforeFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья');
+  }
+  if (hasBendAfter && curInward && segAfterFull < minZFlange) {
+    problems.push('Полка справа ' + segAfterFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья');
+  }
 
   // 5. Крайняя полка длиннее высоты матрицы — при гибке кромка может
   //    упереться в подложку (стол / станину пресса).
-  //    Вертикальное опускание конца полки = длина × sin(угол гиба).
-  //    Если оно превышает высоту матрицы — кромка уйдёт ниже стола.
+  //    Используем ПОЛНУЮ длину сегмента (не уменьшенную на tangentDistance),
+  //    т.к. физически опускается весь конец полки, включая зону радиуса.
+  //    Вертикальное опускание = полная длина × sin(угол гиба).
   if (die.height > 0) {
     const bendRad = bend.bendAngle;
     const drop = Math.sin(bendRad);
     if (drop > 0) {
-      if (!hasBendBefore && segBeforeLen * drop > die.height) {
-        warnings.push('Крайняя полка слева ' + segBeforeLen.toFixed(1) + ' мм длиннее высоты матрицы ' + die.height + ' мм — при гибке кромка упрётся в подложку');
+      if (!hasBendBefore && segBeforeFull * drop > die.height) {
+        warnings.push('Крайняя полка слева ' + segBeforeFull.toFixed(1) + ' мм длиннее высоты матрицы ' + die.height + ' мм — при гибке кромка упрётся в подложку');
       }
-      if (!hasBendAfter && segAfterLen * drop > die.height) {
-        warnings.push('Крайняя полка справа ' + segAfterLen.toFixed(1) + ' мм длиннее высоты матрицы ' + die.height + ' мм — при гибке кромка упрётся в подложку');
+      if (!hasBendAfter && segAfterFull * drop > die.height) {
+        warnings.push('Крайняя полка справа ' + segAfterFull.toFixed(1) + ' мм длиннее высоты матрицы ' + die.height + ' мм — при гибке кромка упрётся в подложку');
       }
     }
   }
@@ -173,7 +186,11 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
       beforeLen = Math.max(0, beforeLen);
       afterLen = Math.max(0, afterLen);
       const checkDH = typeof S !== 'undefined' && S.checkDieHeight;
-      const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH);
+      const prevInward = prevBend ? prevBend.isInward : false;
+      const nextInward = nextBend ? nextBend.isInward : false;
+      const segBeforeFull = segs[b.segBeforeIndex].length;
+      const segAfterFull = segs[b.segAfterIndex].length;
+      const result = checkBendFeasibility(b, beforeLen, afterLen, segBeforeFull, segAfterFull, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH, prevInward, nextInward);
       b.feasible = result.ok;
       b.problems = result.problems;
       b.warnings = result.warnings;
