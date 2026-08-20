@@ -461,6 +461,18 @@ function renderToolButtons() {
     const active = S.toolMode === tl.mode;
     return '<button onclick="S.toolMode=\'' + tl.mode + '\';S.drawFromIdx=null;renderAll()" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"><i data-lucide="' + tl.icon + '" class="h-3.5 w-3.5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
   }).join('');
+  // Кнопка-тумблер «Симуляция гибки»
+  const simBtn = document.createElement('button');
+  simBtn.className = btnBase + ' ' + (S.simMode ? 'bg-purple-600 hover:bg-purple-700 text-white border-purple-600' : 'border-dashed border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/30');
+  simBtn.innerHTML = '<i data-lucide="sparkles" class="h-3.5 w-3.5 shrink-0"></i><span class="truncate">' + t('simulate') + '</span>';
+  simBtn.onclick = function () {
+    S.simMode = !S.simMode;
+    S.simBends = [];
+    S.previewBendIdx = null;
+    if (S.simMode) { S.toolMode = 'select'; S.drawFromIdx = null; doUnfold(); }
+    renderAll();
+  };
+  c.appendChild(simBtn);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -581,27 +593,25 @@ function renderMetalParams() {
   h += '<div class="rounded-md border border-gray-200 dark:border-gray-700 p-2 space-y-2"><div class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-1"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('bendTool') + '</div>';
   h += '<div class="grid grid-cols-2 gap-2">';
   h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('dieSelect') + '</label><select onchange="setMetalWithUndo({dieIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
-  DIES.forEach((d, i) => {
-    h += '<option value="' + i + '"' + (i === S.metal.dieIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? d.nameEn : d.nameRu) + ' (H' + d.height + ')</option>';
-  });
   const tools = loadCustomTools();
+  if (tools.customDies.length === 0) {
+    h += '<option value="0" selected>' + (S.lang === 'en' ? 'No dies yet' : 'Нет матриц — добавьте свую') + '</option>';
+  }
   tools.customDies.forEach((d, i) => {
-    const idx = DIES.length + i;
-    h += '<option value="' + idx + '"' + (idx === S.metal.dieIndex ? ' selected' : '') + '>' + d.nameRu + ' ' + toolSizeLabel(d, true) + ' ★</option>';
+    h += '<option value="' + i + '"' + (i === S.metal.dieIndex ? ' selected' : '') + '>' + d.nameRu + ' ' + toolSizeLabel(d, true) + (d.profile ? ' ★' : '') + '</option>';
   });
   h += '</select>';
-  h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + toolThumbSVG(die, 'die', 70, 32) + '</div>';
+  h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + (die ? toolThumbSVG(die, 'die', 70, 32) : '<span class="text-[9px] text-gray-400">—</span>') + '</div>';
   h += '</div>';
-  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="setMetalWithUndo({punchIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
-  PUNCHES.forEach((p, i) => {
-    h += '<option value="' + i + '"' + (i === S.metal.punchIndex ? ' selected' : '') + '>' + (S.lang === 'en' ? p.nameEn : p.nameRu) + '</option>';
-  });
+  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="S.metal.punchIndex=Number(this.value);doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
+  if (tools.customPunches.length === 0) {
+    h += '<option value="0" selected>' + (S.lang === 'en' ? 'No punches yet' : 'Нет пуансонов — добавьте свой') + '</option>';
+  }
   tools.customPunches.forEach((p, i) => {
-    const idx = PUNCHES.length + i;
-    h += '<option value="' + idx + '"' + (idx === S.metal.punchIndex ? ' selected' : '') + '>' + p.nameRu + ' ' + toolSizeLabel(p, false) + ' ★</option>';
+    h += '<option value="' + i + '"' + (i === S.metal.punchIndex ? ' selected' : '') + '>' + p.nameRu + ' ' + toolSizeLabel(p, false) + (p.isCustom ? ' ★' : '') + '</option>';
   });
   h += '</select>';
-  h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + toolThumbSVG(punch, 'punch', 70, 32) + '</div>';
+  h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + (punch ? toolThumbSVG(punch, 'punch', 70, 32) : '<span class="text-[9px] text-gray-400">—</span>') + '</div>';
   h += '</div>';
   h += '</div>';
   // Custom tools buttons
@@ -848,12 +858,6 @@ function renderUnfoldInfo() {
   // Get die/punch (custom or preset)
   const die = getDieByIndex(S.metal.dieIndex);
   const punch = getPunchByIndex(S.metal.punchIndex);
-  // Short flanges
-  const minFlange = S.metal.bendRadius * 2 + S.metal.thickness;
-  let shortCount = 0;
-  res.elements.forEach(el => {
-    if (el.type === 'straight' && el.length > 0 && el.length < minFlange) shortCount++;
-  });
   let h = '';
   // BOM
   h += '<div class="rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600/50 p-2.5"><p class="text-[10px] text-gray-500 dark:text-gray-400 font-semibold border-l-2 border-green-500 pl-2 mb-1.5">' + t('bomTitle') + '</p>';
@@ -882,32 +886,6 @@ function renderUnfoldInfo() {
   h += '<div class="grid grid-cols-3 gap-x-2 mt-1.5 text-[9px]"><div><span class="text-gray-500 dark:text-gray-400">' + t('density') + '</span><p class="font-mono tabular-nums">' + density.toFixed(1) + ' ' + t('densityUnit') + '</p></div>';
   h += '<div><span class="text-gray-500 dark:text-gray-400">' + t('thickShort') + '</span><p class="font-mono tabular-nums">' + S.metal.thickness + ' mm</p></div>';
   h += '<div><span class="text-gray-500 dark:text-gray-400">R/K</span><p class="font-mono tabular-nums">' + S.metal.bendRadius + '/' + S.metal.kFactor.toFixed(2) + '</p></div></div></div>';
-  // Short flange warning
-  if (shortCount > 0) {
-    h += '<div class="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50 p-2.5"><div class="flex items-start gap-2"><i data-lucide="triangle-alert" class="h-4 w-4 text-red-500 shrink-0 mt-0.5"></i><div class="flex-1"><p class="text-[11px] font-semibold text-red-700 dark:text-red-300">' + t('shortFlanges') + '</p><p class="text-[10px] text-red-600/80 dark:text-red-400/70 mt-0.5">' + shortCount + ' ' + t('flangesShorter') + ' ' + minFlange.toFixed(1) + ' mm</p></div></div></div>';
-  }
-  // Bend feasibility warning
-  const badBends = (res.bendInfos || []).filter(b => b.feasible === false);
-  if (badBends.length > 0) {
-    const dieName = S.lang === 'en' ? die.nameEn : die.nameRu;
-    const punchName = S.lang === 'en' ? punch.nameEn : punch.nameRu;
-    h += '<div class="rounded-lg bg-red-50 dark:bg-red-950/40 border-2 border-red-400/60 dark:border-red-700/60 p-2.5"><div class="flex items-start gap-2"><i data-lucide="triangle-alert" class="h-4 w-4 text-red-500 shrink-0 mt-0.5"></i><div class="flex-1"><p class="text-[11px] font-semibold text-red-700 dark:text-red-300">' + t('bendNotFeasible') + '</p><p class="text-[10px] text-red-600/80 dark:text-red-400/70 mt-0.5">' + dieName + ' / ' + punchName + '</p></div></div><div class="mt-1.5 space-y-1">';
-    badBends.forEach(b => {
-      const bn = res.bendInfos.indexOf(b) + 1;
-      h += '<div class="text-[10px] text-red-700 dark:text-red-400"><b>' + t('bend') + ' ' + bn + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b><div class="pl-2">' + b.problems.join('<br>— ') + '</div></div>';
-    });
-    h += '</div></div>';
-  }
-  // Bend warnings (не блокируют развёртку, но обращают внимание)
-  const warnBends = (res.bendInfos || []).filter(b => b.warnings && b.warnings.length > 0);
-  if (warnBends.length > 0) {
-    h += '<div class="rounded-lg bg-amber-50 dark:bg-amber-950/30 border-2 border-amber-400/60 dark:border-amber-700/60 p-2.5"><div class="flex items-start gap-2"><i data-lucide="triangle-alert" class="h-4 w-4 text-amber-500 shrink-0 mt-0.5"></i><div class="flex-1"><p class="text-[11px] font-semibold text-amber-700 dark:text-amber-300">' + t('bendWarnings') + '</p></div></div><div class="mt-1.5 space-y-1">';
-    warnBends.forEach(b => {
-      const bn = res.bendInfos.indexOf(b) + 1;
-      h += '<div class="text-[10px] text-amber-700 dark:text-amber-400"><b>' + t('bend') + ' ' + bn + ' (' + (b.bendAngle * 180 / Math.PI).toFixed(0) + '°):</b><div class="pl-2">' + b.warnings.join('<br>— ') + '</div></div>';
-    });
-    h += '</div></div>';
-  }
   // Segments toggle
   h += '<button onclick="S.showSegments=!S.showSegments;renderUnfoldInfo()" class="w-full flex items-center justify-between text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 py-1"><span class="flex items-center gap-1"><i data-lucide="table-properties" class="h-3 w-3"></i>' + t('segmentsTitle') + '</span><span class="transition-transform duration-200 ' + (S.showSegments ? 'rotate-180' : '') + '">\u25bc</span></button>';
   if (S.showSegments) {

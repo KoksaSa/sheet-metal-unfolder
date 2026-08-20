@@ -1,7 +1,7 @@
 // ==================== STATE ====================
 const S = {
   points: [],
-  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 100, partNumber: '', dieIndex: 0, punchIndex: 1 },
+  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 100, partNumber: '', dieIndex: 0, punchIndex: 0 },
   hems: [], // [{segIndex, height, side:'left'|'right'}]
   hemEditing: null, // {segIndex} when hem dialog is open
   hemHoveredSeg: -1,
@@ -13,6 +13,8 @@ const S = {
   showDimensions: true,
   showAxisLabels: true,
   showToolsOnCanvas: false,
+  simMode: false,
+  simBends: [], // индексы активных (согнутых) гибов в симуляции
   punchOffsetX: 0,
   punchOffsetY: 0,
   bendPointX: 0,

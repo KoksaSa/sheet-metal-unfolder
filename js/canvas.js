@@ -141,6 +141,7 @@ function drawDrawCanvas() {
   drawCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = canvasW, h = canvasH;
   const isDark = S.isDark;
+  let drawDrawCanvasSimDone = false;
 
   // Сброс hit areas
   S._hitAreas = [];
@@ -273,8 +274,117 @@ function drawDrawCanvas() {
     }
   }
 
+  // ==================== SIMULATION MODE ====================
+  if (S.simMode && S.unfoldResult && S.points.length >= 2) {
+    const sim = computeSimPoints();
+    if (sim && sim.pts.length >= 2) {
+      // Плоская линия развёртки (серая, для ориентира) — с тем же якорем,
+      // что и согнутый контур (подана тем же местом к центру ручья).
+      const flat = computeSimPoints([]);
+      const flatPts = flat ? flat.pts : null;
+      if (sim && flat && flat.bendMarkers && sim.anchorIndex !== undefined && flat.bendMarkers[sim.anchorIndex]) {
+        const a = flat.bendMarkers[sim.anchorIndex];
+        const dx = -a.x, dy = -a.y;
+        flatPts.forEach(p => { p.x += dx; p.y += dy; });
+      }
+      drawCtx.save();
+      drawCtx.strokeStyle = isDark ? '#3a3a4e88' : '#c0c0c088';
+      drawCtx.lineWidth = 1.5;
+      drawCtx.setLineDash([6, 4]);
+      drawCtx.beginPath();
+      if (flatPts) {
+      const sf0 = w2c(flatPts[0].x, flatPts[0].y);
+      drawCtx.moveTo(sf0.cx, sf0.cy);
+      for (let i = 1; i < flatPts.length; i++) {
+        const p = w2c(flatPts[i].x, flatPts[i].y);
+        drawCtx.lineTo(p.cx, p.cy);
+      }
+      drawCtx.stroke();
+      drawCtx.setLineDash([]);
+      drawCtx.restore();
+      }
+
+      // Согнутый контур (оранжевый)
+      drawCtx.save();
+      drawCtx.strokeStyle = isDark ? '#f59e0b33' : '#f59e0b22';
+      drawCtx.lineWidth = 8;
+      drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+      drawCtx.beginPath();
+      const g0 = w2c(sim.pts[0].x, sim.pts[0].y);
+      drawCtx.moveTo(g0.cx, g0.cy);
+      for (let i = 1; i < sim.pts.length; i++) {
+        const p = w2c(sim.pts[i].x, sim.pts[i].y);
+        drawCtx.lineTo(p.cx, p.cy);
+      }
+      drawCtx.stroke();
+      drawCtx.strokeStyle = isDark ? '#f59e0b' : '#d97706';
+      drawCtx.lineWidth = 2.5;
+      drawCtx.beginPath();
+      const s0 = w2c(sim.pts[0].x, sim.pts[0].y);
+      drawCtx.moveTo(s0.cx, s0.cy);
+      for (let i = 1; i < sim.pts.length; i++) {
+        const p = w2c(sim.pts[i].x, sim.pts[i].y);
+        drawCtx.lineTo(p.cx, p.cy);
+      }
+      drawCtx.stroke();
+      drawCtx.restore();
+
+      // Точки контура
+      sim.pts.forEach(pt => {
+        const c = w2c(pt.x, pt.y);
+        drawCtx.beginPath();
+        drawCtx.arc(c.cx, c.cy, 3, 0, Math.PI * 2);
+        drawCtx.fillStyle = isDark ? '#f59e0baa' : '#d97706aa';
+        drawCtx.fill();
+      });
+
+      // Маркеры точек гиба
+      sim.bendMarkers.forEach(m => {
+        const c = w2c(m.x, m.y);
+        const isActive = S.simBends.includes(m.index);
+        // Кольцо
+        drawCtx.beginPath();
+        drawCtx.arc(c.cx, c.cy, 10, 0, Math.PI * 2);
+        drawCtx.fillStyle = isActive
+          ? (isDark ? '#22c55e44' : '#16a34a33')
+          : (isDark ? '#3b82f644' : '#3b82f633');
+        drawCtx.fill();
+        drawCtx.strokeStyle = isActive
+          ? (isDark ? '#22c55e' : '#16a34a')
+          : (isDark ? '#3b82f6' : '#3b82f6');
+        drawCtx.lineWidth = 2;
+        drawCtx.stroke();
+        // Номер гиба
+        drawCtx.fillStyle = isActive
+          ? (isDark ? '#22c55e' : '#16a34a')
+          : (isDark ? '#93c5fd' : '#2563eb');
+        drawCtx.font = 'bold 10px sans-serif';
+        drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+        drawCtx.fillText(String(m.index + 1), c.cx, c.cy);
+      });
+
+      // Подпись режима
+      drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+      drawCtx.font = 'bold 11px sans-serif';
+      drawCtx.textAlign = 'left'; drawCtx.textBaseline = 'top';
+      drawCtx.fillText(S.lang === 'en'
+        ? 'Bending simulation — click bend points to fold'
+        : 'Симуляция гибки — кликайте по точкам гиба чтобы согнуть', 10, 10);
+      drawCtx.font = '9px sans-serif';
+      const activeCount = S.simBends.length;
+      const totalBends = sim.bendMarkers.length;
+      drawCtx.fillText(S.lang === 'en'
+        ? 'Bent: ' + activeCount + ' / ' + totalBends + ' — click again to unfold'
+        : 'Согнуто: ' + activeCount + ' / ' + totalBends + ' — повторный клик разгибает', 10, 26);
+    }
+    // В режиме симуляции не рисуем обычный контур и размеры
+    drawDrawCanvasSimDone = true;
+  } else {
+    drawDrawCanvasSimDone = false;
+  }
+
   // Profile lines
-  if (S.points.length >= 2) {
+  if (S.points.length >= 2 && !drawDrawCanvasSimDone) {
     // Glow
     drawCtx.save();
     drawCtx.strokeStyle = isDark ? '#22c55e22' : '#16a34a22';
@@ -528,6 +638,7 @@ function drawDrawCanvas() {
   }
 
   // Points
+  if (!drawDrawCanvasSimDone) {
   S._hitAreas = S._hitAreas || [];
   // Build bend number map: vertexIndex -> bendNumber (1-indexed)
   const bendNumMap = {};
@@ -581,6 +692,7 @@ function drawDrawCanvas() {
     // Hit area for point (always, for dragging)
     S._hitAreas.push({ type: 'point', index: i, x: cx - 10, y: cy - 10, w: 20, h: 20 });
   });
+  } // end if !drawDrawCanvasSimDone
 
   // Hem tool: highlight hovered segment
   if (S.toolMode === 'hem' && S.hemHoveredSeg >= 0 && S.hemHoveredSeg < S.points.length - 1) {
@@ -857,6 +969,67 @@ function computeFoldedPoints(bendIdx, flip) {
   }
 
   return folded;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// СИМУЛЯЦИЯ ГИБКИ: плоская линия развёртки с точками гибов.
+// Клик по точке гиба сгибает хвост контура в этом месте.
+// ═══════════════════════════════════════════════════════════════
+function computeSimPoints() {
+  if (!S.unfoldResult) return null;
+  const res = S.unfoldResult;
+  const elements = res.elements || [];
+  const bends = res.bendInfos || [];
+  const active = Array.isArray(S.simBends) ? S.simBends : [];
+
+  const pts = [{ x: 0, y: 0 }];
+  const bendMarkers = [];
+  let angle = 0; // текущее направление контура (0 = вправо)
+  let bendIdx = 0;
+
+  for (const el of elements) {
+    const len = el.type === 'bend' ? el.bendAllowance : el.length;
+    if (el.type === 'bend') {
+      // Точка (вершина) излома в развёртке:
+      const b = bends.find(bb => bb.vertexIndex === el.bendNumber);
+      const td = b ? b.tangentDistance : 0;
+      const cur = pts[pts.length - 1];
+      // Вершина — на расстоянии tangentDistance от начала полки:
+      // именно в этой точке контура при гибке окажется пуансон.
+      const vx = cur.x + Math.cos(angle) * td;
+      const vy = cur.y + Math.sin(angle) * td;
+      bendMarkers.push({ x: vx, y: vy, index: bendIdx, angle: el.angle });
+      // Если гиб активен — поворачиваем направление на deflection
+      if (active.includes(bendIdx)) {
+        const b = bends.find(bb => bb.vertexIndex === el.bendNumber);
+        if (b) angle += b.deflection;
+        else angle += el.angle * (el.direction || 1);
+      }
+      // Конец зоны гиба — на tangentDistance от вершины в новом направлении
+      pts.push({ x: vx + Math.cos(angle) * td, y: vy + Math.sin(angle) * td });
+      bendIdx++;
+    } else {
+      const cur = pts[pts.length - 1];
+      const dx = Math.cos(angle) * len;
+      const dy = Math.sin(angle) * len;
+      pts.push({ x: cur.x + dx, y: cur.y + dy });
+    }
+  }
+
+  // Якорь: точка гиба, которая должна стоять в центре V-ручья (0,0).
+  // Последний активный гиб по порядку (или первый маркер, если ещё ничего не согнуто).
+  let anchorIndex = 0;
+  for (let i = bendMarkers.length - 1; i >= 0; i--) {
+    if (active.includes(bendMarkers[i].index)) { anchorIndex = i; break; }
+  }
+  const anchor = bendMarkers[anchorIndex];
+  if (anchor) {
+    const dx = -anchor.x, dy = -anchor.y;
+    pts.forEach(p => { p.x += dx; p.y += dy; });
+    bendMarkers.forEach(m => { m.x += dx; m.y += dy; });
+  }
+
+  return { pts, bendMarkers, bends, anchorIndex };
 }
 
 // Находит центр V-ручья матрицы по зазору на верхней грани DXF-профиля.
@@ -1872,6 +2045,28 @@ drawCanvas.addEventListener('mousedown', e => {
     addPoint(p);
     renderAll();
   } else if (e.button === 0 && S.toolMode === 'select') {
+    // ══ Режим симуляции: клик по маркеру гиба сгибает/разгибает ══
+    if (S.simMode && S.unfoldResult) {
+      const sim = computeSimPoints();
+      if (sim && sim.bendMarkers.length) {
+        let best = null, bestDist = Infinity;
+        for (const m of sim.bendMarkers) {
+          const pc = w2c(m.x, m.y);
+          const d = Math.sqrt((pc.cx - cx) ** 2 + (pc.cy - cy) ** 2);
+          if (d < 14 && d < bestDist) { bestDist = d; best = m; }
+        }
+        if (best) {
+          const i = S.simBends.indexOf(best.index);
+          if (i >= 0) S.simBends.splice(i, 1);
+          else S.simBends.push(best.index);
+          drawDrawCanvas();
+          return;
+        }
+      }
+      // Клик мимо — ничего не делаем в симуляции
+      drawDrawCanvas();
+      return;
+    }
     // Проверяем клик по точке сгибания (перетаскивание)
     if (isNearBendPoint(cx, cy)) {
       dragBendPoint = true;

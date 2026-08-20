@@ -109,24 +109,18 @@ function deleteCustomPunch(id) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ПОЛУЧЕНИЕ ИНСТРУМЕНТА ПО ИНДЕКСУ (стандартный ли, свой ли)
+// ПОЛУЧЕНИЕ ИНСТРУМЕНТА ПО ИНДЕКСУ (только свои инструменты)
 // ═══════════════════════════════════════════════════════════════
 function getDieByIndex(idx) {
+  const tools = loadCustomTools();
   if (idx === undefined || idx === null || isNaN(idx)) idx = 0;
-  if (idx >= DIES.length) {
-    const tools = loadCustomTools();
-    return tools.customDies[idx - DIES.length] || null;
-  }
-  return DIES[idx] || null;
+  return tools.customDies[idx] || null;
 }
 
 function getPunchByIndex(idx) {
-  if (idx === undefined || idx === null || isNaN(idx)) idx = 1;
-  if (idx >= PUNCHES.length) {
-    const tools = loadCustomTools();
-    return tools.customPunches[idx - PUNCHES.length] || null;
-  }
-  return PUNCHES[idx] || null;
+  const tools = loadCustomTools();
+  if (idx === undefined || idx === null || isNaN(idx)) idx = 0;
+  return tools.customPunches[idx] || null;
 }
 
 const PRESET_SHAPES = [
