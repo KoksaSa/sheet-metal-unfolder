@@ -713,7 +713,10 @@ function drawDrawCanvas() {
 }
 
 // Находит центр V-ручья матрицы по зазору на верхней грани DXF-профиля.
-// Возвращает X-координату центра ручья (или геом. центр если не удалось).
+// V-ручей — это ВНУТРЕННИЙ зазор между точками верхней грани:
+// его соседние точки НЕ являются крайними точками контура (minX/maxX).
+// Для профиля «полка слева + ручей + полка справа» верхняя грань даёт 4 точки:
+// [minX, внутр.1, внутр.2, maxX] — внутренний зазор это x3-x2.
 function findDieGrooveCenter(profile) {
   if (!profile || !profile.chains) return (profile.minX || 0) + (profile.width || 0) / 2;
   const EPS = 1e-6;
@@ -724,15 +727,22 @@ function findDieGrooveCenter(profile) {
       if (Math.abs(p.y - maxY) < EPS) xs.push(p.x);
     });
   });
-  if (xs.length < 2) return (profile.minX || 0) + (profile.width || 0) / 2;
+  if (xs.length < 3) return (profile.minX || 0) + (profile.width || 0) / 2;
   xs.sort((a, b) => a - b);
+  const minX = xs[0], maxX = xs[xs.length - 1];
+  // Ищем ВНУТРЕННИЙ зазор: соседние точки не на краях профиля
   let gap = 0, gapStart = 0, gapEnd = 0;
   for (let i = 0; i < xs.length - 1; i++) {
+    if (xs[i] <= minX + EPS) continue;          // точка на левом краю
+    if (xs[i + 1] >= maxX - EPS) continue;       // точка на правом краю
     const g = xs[i + 1] - xs[i];
     if (g > gap) { gap = g; gapStart = xs[i]; gapEnd = xs[i + 1]; }
   }
-  if (gap < (profile.width || 1) * 0.02 || gap > (profile.width || 1) * 0.95) {
-    return (profile.minX || 0) + (profile.width || 0) / 2;
+  if (gap <= EPS) {
+    // Фолбэк: центральный зазор
+    const mid = Math.floor(xs.length / 2);
+    gapStart = xs[mid - 1]; gapEnd = xs[mid];
+    if (gapEnd - gapStart <= 0) return (minX + maxX) / 2;
   }
   return (gapStart + gapEnd) / 2;
 }
