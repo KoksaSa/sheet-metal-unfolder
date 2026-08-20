@@ -7,6 +7,7 @@ const drawCanvas = document.getElementById('draw-canvas');
 const drawCtx = drawCanvas.getContext('2d');
 let canvasW = 400, canvasH = 300;
 let isPanning = false, panStart = null, dragPtIdx = null;
+let dragPunch = false;
 let measureStart = null, measureEnd = null, measureStep = 0;
 let animFrame = 0;
 
@@ -817,14 +818,15 @@ function drawToolsOnCanvas(isDark) {
   drawCtx.fillText((S.lang === 'en' ? die.nameEn : die.nameRu) || 'Die', dl.cx, dl.cy - 3);
 
   // === Пуансон ===
+  const pOX = S.punchOffsetX || 0;
   drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
   drawCtx.fillStyle = isDark ? '#ef444418' : '#ef444415';
   drawCtx.lineWidth = 1.5;
 
   if (punch.profile && punch.profile.chains) {
     // Кастомный пуансон — рисуем реальный DXF-профиль
-    // Центр по X, вершина (низ профиля) на оси X (Y=0), тело вверх (Y+)
-    const offX = -(punch.profile.minX + punch.profile.width / 2);
+    // Центр по X + смещение, вершина (низ профиля) на оси X (Y=0), тело вверх (Y+)
+    const offX = -(punch.profile.minX + punch.profile.width / 2) + pOX;
     const offY = -punch.profile.minY;
     punch.profile.chains.forEach(chain => {
       drawCtx.beginPath();
@@ -845,7 +847,7 @@ function drawToolsOnCanvas(isDark) {
     const halfS = pS / 2;
     const pTopY = pH;
     const sc = S.viewport.scale;
-    const p = (x, y) => w2c(x, y);
+    const p = (x, y) => w2c(x + pOX, y);
     drawCtx.beginPath();
     // Вершина (центр, Y=0)
     let q = p(0, 0);
@@ -871,7 +873,7 @@ function drawToolsOnCanvas(isDark) {
 
   // Подпись пуансона
   const pH = punch.height || 50;
-  const pl = w2c(0, pH);
+  const pl = w2c(pOX, pH);
   drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
   drawCtx.font = '9px sans-serif';
   drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
@@ -887,6 +889,15 @@ function drawToolsOnCanvas(isDark) {
   drawCtx.lineTo(o.cx, o.cy + dH * S.viewport.scale);
   drawCtx.stroke();
   drawCtx.setLineDash([]);
+
+  // Индикатор смещения пуансона
+  if (Math.abs(pOX) > 0.01) {
+    const offPt = w2c(pOX, 0);
+    drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
+    drawCtx.font = '9px sans-serif';
+    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
+    drawCtx.fillText('Δ ' + pOX.toFixed(1) + ' mm', offPt.cx, offPt.cy + 12);
+  }
 }
 
 // ==================== UNFOLD CANVAS ====================
@@ -1632,6 +1643,23 @@ function isNearFirst(cx, cy) {
   return Math.sqrt((f.cx - cx) ** 2 + (f.cy - cy) ** 2) < 15;
 }
 
+// Проверка клика по пуансону (когда инструменты показаны на канвас)
+function isNearPunch(cx, cy) {
+  if (!S.showToolsOnCanvas) return false;
+  const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
+  if (!punch) return false;
+  const pOX = S.punchOffsetX || 0;
+  const pH = punch.height || 50;
+  const pS = punch.swidth || 20;
+  const tip = w2c(pOX, 0);
+  const top = w2c(pOX, pH);
+  const halfW = (pS / 2) * S.viewport.scale;
+  // Прямоугольник: от вершины (Y=0) до верха (Y=pH), ширина = pS
+  const minX = tip.cx - halfW, maxX = tip.cx + halfW;
+  const minY = Math.min(tip.cy, top.cy), maxY = Math.max(tip.cy, top.cy);
+  return cx >= minX - 8 && cx <= maxX + 8 && cy >= minY - 8 && cy <= maxY + 8;
+}
+
 /**
  * Найти hit area по координатам мыши
  */
@@ -1691,6 +1719,12 @@ drawCanvas.addEventListener('mousedown', e => {
     addPoint(p);
     renderAll();
   } else if (e.button === 0 && S.toolMode === 'select') {
+    // Проверяем клик по пуансону (перетаскивание)
+    if (isNearPunch(cx, cy)) {
+      dragPunch = true;
+      drawCanvas.style.cursor = 'grabbing';
+      return;
+    }
     // Проверяем клик по hit areas (только сегменты — для редактирования длины)
     const hit = findHitArea(cx, cy);
     if (hit && hit.type === 'segment') {
@@ -1756,6 +1790,14 @@ drawCanvas.addEventListener('mousemove', e => {
     return;
   }
 
+  if (dragPunch) {
+    const w = c2w(cx, cy);
+    const p = S.snapToGrid ? snapPoint(w) : w;
+    S.punchOffsetX = p.x;
+    drawDrawCanvas();
+    return;
+  }
+
   // Check snap endpoint
   S.snapEndpoint = -1;
   if (S.toolMode === 'draw' && S.points.length > 0) {
@@ -1778,7 +1820,7 @@ drawCanvas.addEventListener('mousemove', e => {
 
   // Cursor
   if (S.toolMode === 'draw') drawCanvas.style.cursor = 'crosshair';
-  else if (S.toolMode === 'select') drawCanvas.style.cursor = S.hoveredPt !== null ? 'grab' : 'default';
+  else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy)) ? 'grab' : 'default';
   else if (S.toolMode === 'erase') drawCanvas.style.cursor = S.hoveredPt !== null ? 'pointer' : 'default';
   else if (S.toolMode === 'measure') drawCanvas.style.cursor = 'crosshair';
   else if (S.toolMode === 'hem') drawCanvas.style.cursor = S.hemHoveredSeg >= 0 ? 'pointer' : 'default';
@@ -1796,12 +1838,18 @@ drawCanvas.addEventListener('mouseup', e => {
     dragPtIdx = null;
     renderAll();
   }
+  if (dragPunch) {
+    dragPunch = false;
+    drawCanvas.style.cursor = 'default';
+    drawDrawCanvas();
+  }
 });
 
 drawCanvas.addEventListener('mouseleave', () => {
   S.mouseWorld = null;
   isPanning = false;
   panStart = null;
+  dragPunch = false;
   S.hoveredPt = -1;
   S.snapEndpoint = -1;
   S.hemHoveredSeg = -1;
