@@ -48,9 +48,11 @@ function getMetalDensity(mtIdx, thick) {
  * @param {boolean} checkDieHeight - проверять ли высоту матрицы
  * @param {boolean} prevInward - предыдущий гиб загнул полку вниз (к матрице)
  * @param {boolean} nextInward - следующий гиб загнёт полку вниз (к матрице)
+ * @param {number} segBeforeOuter - длина внешней полки за предыдущим гибом (0 если нет)
+ * @param {number} segAfterOuter - длина внешней полки за следующим гибом (0 если нет)
  * @returns {{ok: boolean, problems: string[], warnings: string[]}} результат проверки
  */
-function checkBendFeasibility(bend, segBeforeLen, segAfterLen, segBeforeFull, segAfterFull, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight, prevInward, nextInward) {
+function checkBendFeasibility(bend, segBeforeLen, segAfterLen, segBeforeFull, segAfterFull, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight, prevInward, nextInward, segBeforeOuter, segAfterOuter) {
   const problems = [];
   const warnings = [];
   const bendDeg = bend.bendAngle * 180 / Math.PI;
@@ -81,19 +83,56 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, segBeforeFull, se
   }
 
   // 4. Полка между гибами в Z-профиле (гибы в РАЗНЫХ направлениях):
-  //    минимальная полка = V/2. В Z-профиле один гиб идёт вниз (к матрице),
-  //    другой вверх — если полка < V/2, уже согнутая вниз полка не даст
-  //    сдвинуть деталь до центра ручья. В U-профиле (гибы в одну сторону)
-  //    полки смотрят в одну сторону — проверка не нужна.
-  //    Z = соседние гибы в противоположных направлениях (inward ≠ neighbor).
+  //    а) Если согнутая полка идёт ВНИЗ (к матрице, inward) — V/2: матрица не
+  //       даст сдвинуть деталь до центра ручья.
+  //    б) Если согнутая полка идёт ВВЕРХ (от матрицы, outward) — S/2: тело
+  //       пуансона (ширина S) упрётся в уже согнутую полку.
   //    Используем ПОЛНУЮ длину сегмента.
   const curInward = bend.isInward;
-  const minZFlange = die.vWidth / 2;
-  if (hasBendBefore && prevInward !== curInward && segBeforeFull < minZFlange) {
-    problems.push('Полка слева ' + segBeforeFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья (Z-профиль)');
+  const punchS = punch.swidth || 0;
+  const minDie = die.vWidth / 2;
+  const minPunch = punchS / 2;
+  if (hasBendBefore && prevInward !== curInward) {
+    const need = prevInward ? minDie : minPunch;
+    const what = prevInward ? 'V/2 (' + minDie.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья'
+                            : 'S/2 (' + minPunch.toFixed(1) + ' мм) — тело пуансона упрётся в уже согнутую полку (Z-профиль)';
+    if (segBeforeFull < need) {
+      problems.push('Полка слева ' + segBeforeFull.toFixed(1) + ' мм меньше ' + what);
+    }
   }
-  if (hasBendAfter && curInward !== nextInward && segAfterFull < minZFlange) {
-    problems.push('Полка справа ' + segAfterFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья (Z-профиль)');
+  if (hasBendAfter && curInward !== nextInward) {
+    const need = curInward ? minDie : minPunch;
+    const what = curInward ? 'V/2 (' + minDie.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья'
+                           : 'S/2 (' + minPunch.toFixed(1) + ' мм) — тело пуансона упрётся в уже согнутую полку (Z-профиль)';
+    if (segAfterFull < need) {
+      problems.push('Полка справа ' + segAfterFull.toFixed(1) + ' мм меньше ' + what);
+    }
+  }
+
+  // 4b. Столкновение полок в U-профиле (гибы в ОДНОМ направлении, outward):
+  //     При остром угле (>90°) полки сходятся. Если сумма их горизонтальных
+  //     проекций ≥ расстояние между гибами — полки упрутся друг в друга.
+  //     Формула: (L1 + L2) × |cos(θ)| ≥ D, где D — центральная полка.
+  //     При θ ≤ 90° полки параллельны/расходятся — столкновения нет.
+  const cosTheta = Math.cos(bend.bendAngle);
+  if (cosTheta < 0) { // θ > 90° (острый угол, полки сходятся)
+    const absCos = -cosTheta;
+    // U-профиль до: prevInward === curInward, полки вверх (!inward)
+    if (hasBendBefore && prevInward === curInward && !prevInward) {
+      const central = segBeforeFull;
+      const sumProj = (segBeforeOuter + segAfterFull) * absCos;
+      if (sumProj >= central) {
+        problems.push('Полки столкнутся при гибке: длины ' + segBeforeOuter.toFixed(1) + ' + ' + segAfterFull.toFixed(1) + ' мм слишком длинные для центральной полки ' + central.toFixed(1) + ' мм при угле ' + bendDeg.toFixed(0) + '° (U-профиль)');
+      }
+    }
+    // U-профиль после: curInward === nextInward, полки вверх (!inward)
+    if (hasBendAfter && curInward === nextInward && !curInward) {
+      const central = segAfterFull;
+      const sumProj = (segBeforeFull + segAfterOuter) * absCos;
+      if (sumProj >= central) {
+        problems.push('Полки столкнутся при гибке: длины ' + segBeforeFull.toFixed(1) + ' + ' + segAfterOuter.toFixed(1) + ' мм слишком длинные для центральной полки ' + central.toFixed(1) + ' мм при угле ' + bendDeg.toFixed(0) + '° (U-профиль)');
+      }
+    }
   }
 
   // 5. Крайняя полка длиннее высоты матрицы — при гибке кромка может
@@ -191,7 +230,10 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
       const nextInward = nextBend ? nextBend.isInward : false;
       const segBeforeFull = segs[b.segBeforeIndex].length;
       const segAfterFull = segs[b.segAfterIndex].length;
-      const result = checkBendFeasibility(b, beforeLen, afterLen, segBeforeFull, segAfterFull, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH, prevInward, nextInward);
+      // Длины внешних полок (за соседними гибами) — для проверки столкновения полок
+      const segBeforeOuterFull = prevBend ? segs[prevBend.segBeforeIndex].length : 0;
+      const segAfterOuterFull = nextBend ? segs[nextBend.segAfterIndex].length : 0;
+      const result = checkBendFeasibility(b, beforeLen, afterLen, segBeforeFull, segAfterFull, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH, prevInward, nextInward, segBeforeOuterFull, segAfterOuterFull);
       b.feasible = result.ok;
       b.problems = result.problems;
       b.warnings = result.warnings;

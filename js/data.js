@@ -57,14 +57,14 @@ const DIES = [
 
 // Пуансоны (punch): радиус вершины, максимальный угол гиба
 const PUNCHES = [
-  { id: 'R0.5', nameRu: 'R0.5', nameEn: 'R0.5', radius: 0.5, maxAngle: 90 },
-  { id: 'R1', nameRu: 'R1', nameEn: 'R1', radius: 1, maxAngle: 90 },
-  { id: 'R1.5', nameRu: 'R1.5', nameEn: 'R1.5', radius: 1.5, maxAngle: 90 },
-  { id: 'R2', nameRu: 'R2', nameEn: 'R2', radius: 2, maxAngle: 90 },
-  { id: 'R3', nameRu: 'R3', nameEn: 'R3', radius: 3, maxAngle: 90 },
-  { id: 'R5', nameRu: 'R5', nameEn: 'R5', radius: 5, maxAngle: 90 },
-  { id: 'R8', nameRu: 'R8', nameEn: 'R8', radius: 8, maxAngle: 90 },
-  { id: 'R10', nameRu: 'R10', nameEn: 'R10', radius: 10, maxAngle: 90 }
+  { id: 'R0.5', nameRu: 'R0.5', nameEn: 'R0.5', radius: 0.5, swidth: 20, maxAngle: 90 },
+  { id: 'R1',   nameRu: 'R1',   nameEn: 'R1',   radius: 1,   swidth: 20, maxAngle: 90 },
+  { id: 'R1.5', nameRu: 'R1.5', nameEn: 'R1.5', radius: 1.5, swidth: 20, maxAngle: 90 },
+  { id: 'R2',   nameRu: 'R2',   nameEn: 'R2',   radius: 2,   swidth: 20, maxAngle: 90 },
+  { id: 'R3',   nameRu: 'R3',   nameEn: 'R3',   radius: 3,   swidth: 25, maxAngle: 90 },
+  { id: 'R5',   nameRu: 'R5',   nameEn: 'R5',   radius: 5,   swidth: 30, maxAngle: 90 },
+  { id: 'R8',   nameRu: 'R8',   nameEn: 'R8',   radius: 8,   swidth: 40, maxAngle: 90 },
+  { id: 'R10',  nameRu: 'R10',  nameEn: 'R10',  radius: 10,  swidth: 40, maxAngle: 90 }
 ];
 
 // ==================== CUSTOM TOOLS (USER DEFINED) ====================
