@@ -757,7 +757,7 @@ function drawDrawCanvas() {
       // Подпись: какой гиб просматриваем
       const bends = S.unfoldResult.bendInfos;
       const b = bends[S.previewBendIdx];
-      const bendDeg = (b.bendAngle * 180 / Math.PI).toFixed(0);
+      const bendDeg = ((Math.PI - b.bendAngle) * 180 / Math.PI).toFixed(0);
       drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
       drawCtx.font = 'bold 11px sans-serif';
       drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
@@ -811,11 +811,14 @@ function computeFoldedPoints(bendIdx, flip) {
   folded[v] = { x: pOX, y: pOY };
 
   const bendAngle = b.bendAngle;
+  // Угол между полками (внутренний угол V) = 180° − отклонение.
+  // Например: отклонение 90° → полки под 90°, отклонение 45° → полки под 135°.
+  const interiorAngle = Math.PI - bendAngle;
   const sign = flip ? -1 : 1;
 
-  // «До» гиба: направление от вершины ВЛЕВО под углом bendAngle/2 от вертикали
+  // «До» гиба: направление от вершины ВЛЕВО под углом interiorAngle/2 от вертикали
   // (биссектриса угла коллинеарна оси Y). Каскадные гибы складываются.
-  let beforeAngle = Math.PI / 2 + sign * bendAngle / 2;
+  let beforeAngle = Math.PI / 2 + sign * interiorAngle / 2;
   for (let i = v - 1; i >= 0; i--) {
     folded[i] = {
       x: folded[i + 1].x + segLens[i] * Math.cos(beforeAngle),
@@ -828,8 +831,8 @@ function computeFoldedPoints(bendIdx, flip) {
     }
   }
 
-  // «После» гиба: направление от вершины ВПРАВО под углом bendAngle/2 от вертикали.
-  let afterAngle = Math.PI / 2 - sign * bendAngle / 2;
+  // «После» гиба: направление от вершины ВПРАВО под углом interiorAngle/2 от вертикали.
+  let afterAngle = Math.PI / 2 - sign * interiorAngle / 2;
   for (let i = v + 1; i < pts.length; i++) {
     folded[i] = {
       x: folded[i - 1].x + segLens[i - 1] * Math.cos(afterAngle),
