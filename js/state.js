@@ -15,6 +15,8 @@ const S = {
   showToolsOnCanvas: false,
   punchOffsetX: 0,
   punchOffsetY: 0,
+  bendPointX: 0,
+  bendPointY: 0,
   previewBendIdx: null,
   previewFlip: false,
   checkDieHeight: true,

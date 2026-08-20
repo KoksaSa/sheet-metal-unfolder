@@ -8,6 +8,7 @@ const drawCtx = drawCanvas.getContext('2d');
 let canvasW = 400, canvasH = 300;
 let isPanning = false, panStart = null, dragPtIdx = null;
 let dragPunch = false;
+let dragBendPoint = false;
 let measureStart = null, measureEnd = null, measureStep = 0;
 let animFrame = 0;
 
@@ -762,7 +763,23 @@ function drawDrawCanvas() {
       drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
       const labelPt = w2c(0, 0);
       const flipTxt = S.previewFlip ? ' ←' : ' →';
-      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°)' + flipTxt + ' — клик ещё раз для смены направления, Esc — выход', labelPt.cx, labelPt.cy - 40);
+      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°)' + flipTxt + ' — клик ещё раз для смены направления', labelPt.cx, labelPt.cy - 40);
+      drawCtx.font = '9px sans-serif';
+      drawCtx.fillText('Тяни кружок ◉ чтобы задать точку сгиба на пуансоне, Esc — выход', labelPt.cx, labelPt.cy - 26);
+
+      // === Точка сгибания (перетаскиваемая) ===
+      const bp = w2c(S.bendPointX || 0, S.bendPointY || 0);
+      drawCtx.beginPath();
+      drawCtx.arc(bp.cx, bp.cy, 9, 0, Math.PI * 2);
+      drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+      drawCtx.fill();
+      drawCtx.strokeStyle = isDark ? '#ffffff' : '#ffffff';
+      drawCtx.lineWidth = 2;
+      drawCtx.stroke();
+      drawCtx.beginPath();
+      drawCtx.arc(bp.cx, bp.cy, 3, 0, Math.PI * 2);
+      drawCtx.fillStyle = '#ffffff';
+      drawCtx.fill();
     }
   }
 }
@@ -781,8 +798,8 @@ function computeFoldedPoints(bendIdx, flip) {
   const pts = S.points;
   if (v < 1 || v >= pts.length - 1) return null;
 
-  const pOX = S.punchOffsetX || 0;
-  const pOY = S.punchOffsetY || 0;
+  const pOX = S.bendPointX || 0;
+  const pOY = S.bendPointY || 0;
 
   // Длины сегментов
   const segLens = [];
@@ -1758,6 +1775,13 @@ function isNearFirst(cx, cy) {
   return Math.sqrt((f.cx - cx) ** 2 + (f.cy - cy) ** 2) < 15;
 }
 
+// Проверка клика по точке сгибания (когда активен предпросмотр)
+function isNearBendPoint(cx, cy) {
+  if (S.previewBendIdx === null) return false;
+  const bp = w2c(S.bendPointX || 0, S.bendPointY || 0);
+  return Math.sqrt((bp.cx - cx) ** 2 + (bp.cy - cy) ** 2) < 14;
+}
+
 // Проверка клика по пуансону (когда инструменты показаны на канвас)
 function isNearPunch(cx, cy) {
   if (!S.showToolsOnCanvas) return false;
@@ -1834,6 +1858,12 @@ drawCanvas.addEventListener('mousedown', e => {
     addPoint(p);
     renderAll();
   } else if (e.button === 0 && S.toolMode === 'select') {
+    // Проверяем клик по точке сгибания (перетаскивание)
+    if (isNearBendPoint(cx, cy)) {
+      dragBendPoint = true;
+      drawCanvas.style.cursor = 'grabbing';
+      return;
+    }
     // Проверяем клик по пуансону (перетаскивание)
     if (isNearPunch(cx, cy)) {
       dragPunch = true;
@@ -1852,6 +1882,9 @@ drawCanvas.addEventListener('mousedown', e => {
           } else {
             S.previewBendIdx = bendIdx;
             S.previewFlip = false;
+            // Точка сгибания — на кончике пуансона
+            S.bendPointX = S.punchOffsetX || 0;
+            S.bendPointY = S.punchOffsetY || 0;
           }
           drawDrawCanvas();
           return;
@@ -1943,6 +1976,15 @@ drawCanvas.addEventListener('mousemove', e => {
     return;
   }
 
+  if (dragBendPoint) {
+    const w = c2w(cx, cy);
+    const p = S.snapToGrid ? snapPoint(w) : w;
+    S.bendPointX = p.x;
+    S.bendPointY = p.y;
+    drawDrawCanvas();
+    return;
+  }
+
   // Check snap endpoint
   S.snapEndpoint = -1;
   if (S.toolMode === 'draw' && S.points.length > 0) {
@@ -1965,7 +2007,7 @@ drawCanvas.addEventListener('mousemove', e => {
 
   // Cursor
   if (S.toolMode === 'draw') drawCanvas.style.cursor = 'crosshair';
-  else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy)) ? 'grab' : 'default';
+  else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy) || isNearBendPoint(cx, cy)) ? 'grab' : 'default';
   else if (S.toolMode === 'erase') drawCanvas.style.cursor = S.hoveredPt !== null ? 'pointer' : 'default';
   else if (S.toolMode === 'measure') drawCanvas.style.cursor = 'crosshair';
   else if (S.toolMode === 'hem') drawCanvas.style.cursor = S.hemHoveredSeg >= 0 ? 'pointer' : 'default';
@@ -1988,6 +2030,11 @@ drawCanvas.addEventListener('mouseup', e => {
     drawCanvas.style.cursor = 'default';
     drawDrawCanvas();
   }
+  if (dragBendPoint) {
+    dragBendPoint = false;
+    drawCanvas.style.cursor = 'default';
+    drawDrawCanvas();
+  }
 });
 
 drawCanvas.addEventListener('mouseleave', () => {
@@ -1995,6 +2042,7 @@ drawCanvas.addEventListener('mouseleave', () => {
   isPanning = false;
   panStart = null;
   dragPunch = false;
+  dragBendPoint = false;
   S.hoveredPt = -1;
   S.snapEndpoint = -1;
   S.hemHoveredSeg = -1;
