@@ -715,91 +715,129 @@ function drawDrawCanvas() {
 // Рисует матрицу и пуансон в масштабе 1:1 в центре координатной сетки.
 // (0,0) = центр ручья матрицы (ось гиба). Верхняя грань матрицы — на оси X.
 // Пуансон сверху (Y+), матрица снизу (Y-).
+// Для кастомных инструментов рисуется реальный DXF-профиль,
+// для стандартных — упрощённая геометрия по размерам V/S/H.
 function drawToolsOnCanvas(isDark) {
   const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
   const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
   if (!die || !punch) return;
 
-  const sc = S.viewport.scale;
-
   // === Матрица ===
-  const vW = die.vWidth, dH = die.height;
-  const halfV = vW / 2;
-  const depth = dH * 0.55; // глубина V-ручья (доля высоты)
-  const wallW = halfV;     // ширина стенки матрицы от ручья
-
-  // Точки в мировых координатах (Y+ вверх, Y- вниз от оси X)
-  // Верхняя грань матрицы лежит на Y=0
-  const mL_edge_x = -halfV - wallW;      // левый край матрицы
-  const mR_edge_x = halfV + wallW;       // правый край матрицы
-  const vL_x = -halfV, vR_x = halfV;     // края ручья
-  const vBottom_x = 0, vBottom_y = -depth; // дно ручья
-  const mBottom_y = -dH;                 // низ матрицы
-
-  // Контур матрицы: верх-лево → V-лево → дно V → V-право → верх-право → вниз → низ → вверх
   drawCtx.strokeStyle = isDark ? '#3b82f6aa' : '#3b82f6cc';
   drawCtx.fillStyle = isDark ? '#3b82f618' : '#3b82f615';
   drawCtx.lineWidth = 1.5;
-  drawCtx.beginPath();
-  const p = (x, y) => w2c(x, y);
-  let q = p(mL_edge_x, 0);
-  drawCtx.moveTo(q.cx, q.cy);
-  q = p(vL_x, 0);
-  drawCtx.lineTo(q.cx, q.cy);
-  q = p(vBottom_x, vBottom_y);
-  drawCtx.lineTo(q.cx, q.cy);
-  q = p(vR_x, 0);
-  drawCtx.lineTo(q.cx, q.cy);
-  q = p(mR_edge_x, 0);
-  drawCtx.lineTo(q.cx, q.cy);
-  q = p(mR_edge_x, mBottom_y);
-  drawCtx.lineTo(q.cx, q.cy);
-  q = p(mL_edge_x, mBottom_y);
-  drawCtx.lineTo(q.cx, q.cy);
-  drawCtx.closePath();
-  drawCtx.fill();
-  drawCtx.stroke();
+
+  if (die.profile && die.profile.chains) {
+    // Кастомная матрица — рисуем реальный DXF-профиль
+    // Центр по X, верхняя грань на оси X (Y=0), тело вниз (Y-)
+    const offX = -(die.profile.minX + die.profile.width / 2);
+    const offY = -(die.profile.minY + die.profile.height);
+    die.profile.chains.forEach(chain => {
+      drawCtx.beginPath();
+      chain.forEach((p, pi) => {
+        const c = w2c(p.x + offX, p.y + offY);
+        if (pi === 0) drawCtx.moveTo(c.cx, c.cy);
+        else drawCtx.lineTo(c.cx, c.cy);
+      });
+      drawCtx.closePath();
+      drawCtx.fill();
+      drawCtx.stroke();
+    });
+  } else {
+    // Стандартная матрица — упрощённая геометрия
+    const vW = die.vWidth, dH = die.height;
+    const halfV = vW / 2;
+    const sw = die.swidth || vW * 2;
+    const halfS = sw / 2;
+    const depth = dH * 0.5;
+    const p = (x, y) => w2c(x, y);
+    drawCtx.beginPath();
+    let q = p(-halfS, 0);
+    drawCtx.moveTo(q.cx, q.cy);
+    q = p(-halfV, 0);
+    drawCtx.lineTo(q.cx, q.cy);
+    q = p(0, -depth);
+    drawCtx.lineTo(q.cx, q.cy);
+    q = p(halfV, 0);
+    drawCtx.lineTo(q.cx, q.cy);
+    q = p(halfS, 0);
+    drawCtx.lineTo(q.cx, q.cy);
+    q = p(halfS, -dH);
+    drawCtx.lineTo(q.cx, q.cy);
+    q = p(-halfS, -dH);
+    drawCtx.lineTo(q.cx, q.cy);
+    drawCtx.closePath();
+    drawCtx.fill();
+    drawCtx.stroke();
+  }
 
   // Подпись матрицы
-  const dl = p(0, mBottom_y);
+  const dH = die.height;
+  const dl = w2c(0, -dH);
   drawCtx.fillStyle = isDark ? '#6085f0' : '#2563eb';
   drawCtx.font = '9px sans-serif';
   drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
   drawCtx.fillText((S.lang === 'en' ? die.nameEn : die.nameRu) || 'Die', dl.cx, dl.cy - 3);
 
   // === Пуансон ===
-  const punchR = punch.radius || 1, pS = punch.swidth || 20, pH = punch.height || 40;
-  // Вершина пуансона касается оси X (верх листа)
-  const pTipY = 0;
-  const pL_x = -pS / 2, pR_x = pS / 2;     // края пуансона
-  const pTopY = pTipY + pH;                 // верх пуансона
-
   drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
   drawCtx.fillStyle = isDark ? '#ef444418' : '#ef444415';
   drawCtx.lineWidth = 1.5;
-  drawCtx.beginPath();
-  q = p(0, pTipY);
-  drawCtx.moveTo(q.cx, q.cy);
-  // Скругление вершины радиусом R (от левого края до правого)
-  const pLpt = p(pL_x, 0);
-  const pRpt = p(pR_x, 0);
-  const angleL = Math.atan2(pLpt.cy - q.cy, pLpt.cx - q.cx);
-  const angleR = Math.atan2(pRpt.cy - q.cy, pRpt.cx - q.cx);
-  drawCtx.arc(q.cx, q.cy, punchR * sc, angleL, angleR, false);
-  q = p(pR_x, pTopY);
-  drawCtx.lineTo(q.cx, q.cy);
-  q = p(pL_x, pTopY);
-  drawCtx.lineTo(q.cx, q.cy);
-  drawCtx.lineTo(pLpt.cx, pLpt.cy);
-  drawCtx.closePath();
-  drawCtx.fill();
-  drawCtx.stroke();
+
+  if (punch.profile && punch.profile.chains) {
+    // Кастомный пуансон — рисуем реальный DXF-профиль
+    // Центр по X, вершина (низ профиля) на оси X (Y=0), тело вверх (Y+)
+    const offX = -(punch.profile.minX + punch.profile.width / 2);
+    const offY = -punch.profile.minY;
+    punch.profile.chains.forEach(chain => {
+      drawCtx.beginPath();
+      chain.forEach((p, pi) => {
+        const c = w2c(p.x + offX, p.y + offY);
+        if (pi === 0) drawCtx.moveTo(c.cx, c.cy);
+        else drawCtx.lineTo(c.cx, c.cy);
+      });
+      drawCtx.closePath();
+      drawCtx.fill();
+      drawCtx.stroke();
+    });
+  } else {
+    // Стандартный пуансон — упрощённая геометрия
+    const punchR = punch.radius || 1;
+    const pS = punch.swidth || 20;
+    const pH = punch.height || 50;
+    const halfS = pS / 2;
+    const pTopY = pH;
+    const sc = S.viewport.scale;
+    const p = (x, y) => w2c(x, y);
+    drawCtx.beginPath();
+    // Вершина (центр, Y=0)
+    let q = p(0, 0);
+    drawCtx.moveTo(q.cx, q.cy);
+    // Скругление радиусом R влево
+    const pL = p(-halfS, 0);
+    const pR = p(halfS, 0);
+    const angleL = Math.atan2(pL.cy - q.cy, pL.cx - q.cx);
+    const angleR = Math.atan2(pR.cy - q.cy, pR.cx - q.cx);
+    drawCtx.arc(q.cx, q.cy, punchR * sc, angleL, angleR, false);
+    // Правая грань вверх
+    q = p(halfS, pTopY);
+    drawCtx.lineTo(q.cx, q.cy);
+    // Верх
+    q = p(-halfS, pTopY);
+    drawCtx.lineTo(q.cx, q.cy);
+    // Левая грань вниз
+    drawCtx.lineTo(pL.cx, pL.cy);
+    drawCtx.closePath();
+    drawCtx.fill();
+    drawCtx.stroke();
+  }
 
   // Подпись пуансона
-  const pl = p(0, pTopY);
+  const pH = punch.height || 50;
+  const pl = w2c(0, pH);
   drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
   drawCtx.font = '9px sans-serif';
-  drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+  drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
   drawCtx.fillText((S.lang === 'en' ? punch.nameEn : punch.nameRu) || 'Punch', pl.cx, pl.cy + 3);
 
   // Осевая линия ручья (пунктир)
@@ -808,8 +846,8 @@ function drawToolsOnCanvas(isDark) {
   drawCtx.setLineDash([4, 3]);
   drawCtx.beginPath();
   const o = w2c(0, 0);
-  drawCtx.moveTo(o.cx, o.cy - pTopY * sc);
-  drawCtx.lineTo(o.cx, o.cy - mBottom_y * sc);
+  drawCtx.moveTo(o.cx, o.cy - pH * S.viewport.scale);
+  drawCtx.lineTo(o.cx, o.cy + dH * S.viewport.scale);
   drawCtx.stroke();
   drawCtx.setLineDash([]);
 }
