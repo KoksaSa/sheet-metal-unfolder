@@ -427,7 +427,7 @@ function drawDrawCanvas() {
           : ((-aOut - (-aIn)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
         const mid = ccw ? -aIn - sweep / 2 : -aIn + sweep / 2;
         drawCtx.font = 'bold 9px sans-serif';
-        const angleText = (ba * 180 / Math.PI).toFixed(0) + '°';
+        const angleText = ((180 - ba * 180 / Math.PI)).toFixed(0) + '°';
         const atw = drawCtx.measureText(angleText).width + 8;
 
         // Кандидаты вокруг вершины
@@ -785,10 +785,10 @@ function drawDrawCanvas() {
 }
 
 // Вычисляет точки согнутого контура для предпросмотра на станке.
-// Вершина гиба → на кончике пуансона (punchOffsetX, punchOffsetY).
-// Угол гиба делится пополам, биссектриса коллинеарна оси Y (вертикально, к пуансону).
-// V-образный угол лежит в ручье матрицы, пуансон давит сверху.
-// Направление (flip = mirror) позволяет выбрать сторону сгиба.
+// Деталь (профиль) уже согнута — это сечение. Предпросмотр = повернуть
+// весь контур так, чтобы выбранный гиб встал на пуансон:
+// вершина → (bendPointX, bendPointY), биссектриса угла коллинеарна оси Y,
+// полки вверх (V в ручье матрицы). flip — зеркало по вертикали.
 function computeFoldedPoints(bendIdx, flip) {
   if (!S.unfoldResult || !S.unfoldResult.bendInfos) return null;
   const bends = S.unfoldResult.bendInfos;
@@ -801,47 +801,36 @@ function computeFoldedPoints(bendIdx, flip) {
   const pOX = S.bendPointX || 0;
   const pOY = S.bendPointY || 0;
 
-  // Длины сегментов
-  const segLens = [];
-  for (let i = 0; i < pts.length - 1; i++) {
-    segLens.push(Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y));
-  }
+  // Направления сегментов от вершины (к соседним точкам)
+  const d1 = Math.atan2(pts[v - 1].y - pts[v].y, pts[v - 1].x - pts[v].x);
+  const d2 = Math.atan2(pts[v + 1].y - pts[v].y, pts[v + 1].x - pts[v].x);
 
-  const folded = new Array(pts.length);
-  folded[v] = { x: pOX, y: pOY };
+  // Внутренний угол между полками (угол детали)
+  const interior = Math.PI - b.bendAngle;
 
-  const bendAngle = b.bendAngle;
-  // Угол между полками (внутренний угол V) = 180° − отклонение.
-  // Например: отклонение 90° → полки под 90°, отклонение 45° → полки под 135°.
-  const interiorAngle = Math.PI - bendAngle;
-  const sign = flip ? -1 : 1;
+  // Знак обхода: как повёрнут d2 относительно d1 в исходном контуре
+  let s = d2 - d1;
+  while (s > Math.PI) s -= 2 * Math.PI;
+  while (s <= -Math.PI) s += 2 * Math.PI;
+  s = s >= 0 ? 1 : -1;
 
-  // «До» гиба: направление от вершины ВЛЕВО под углом interiorAngle/2 от вертикали
-  // (биссектриса угла коллинеарна оси Y). Каскадные гибы складываются.
-  let beforeAngle = Math.PI / 2 + sign * interiorAngle / 2;
-  for (let i = v - 1; i >= 0; i--) {
-    folded[i] = {
-      x: folded[i + 1].x + segLens[i] * Math.cos(beforeAngle),
-      y: folded[i + 1].y + segLens[i] * Math.sin(beforeAngle)
-    };
-    // Гиб на вершине i меняет угол для следующего сегмента (в обратном направлении)
-    if (i > 0) {
-      const bendAt = bends.find(bb => bb.vertexIndex === i);
-      if (bendAt) beforeAngle -= sign * bendAt.deflection;
-    }
-  }
+  // Целевое направление для d1: полка «до» вверх, биссектриса вертикальна
+  const d1Target = Math.PI / 2 - s * interior / 2;
+  const rot = d1Target - d1; // угол поворота всего контура
 
-  // «После» гиба: направление от вершины ВПРАВО под углом interiorAngle/2 от вертикали.
-  let afterAngle = Math.PI / 2 - sign * interiorAngle / 2;
-  for (let i = v + 1; i < pts.length; i++) {
-    folded[i] = {
-      x: folded[i - 1].x + segLens[i - 1] * Math.cos(afterAngle),
-      y: folded[i - 1].y + segLens[i - 1] * Math.sin(afterAngle)
-    };
-    // Гиб на вершине i меняет угол для следующего сегмента
-    if (i < pts.length - 1) {
-      const bendAt = bends.find(bb => bb.vertexIndex === i);
-      if (bendAt) afterAngle += sign * bendAt.deflection;
+  const cosR = Math.cos(rot), sinR = Math.sin(rot);
+  const folded = pts.map(p => {
+    const dx = p.x - pts[v].x;
+    const dy = p.y - pts[v].y;
+    let rx = dx * cosR - dy * sinR;
+    let ry = dx * sinR + dy * cosR;
+    return { x: rx + pOX, y: ry + pOY };
+  });
+
+  // Зеркало по вертикали (через bendPoint) при flip
+  if (flip) {
+    for (let i = 0; i < folded.length; i++) {
+      folded[i].x = 2 * pOX - folded[i].x;
     }
   }
 
