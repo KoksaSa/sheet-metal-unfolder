@@ -626,8 +626,8 @@ function renderSnapSettings() {
   let h = '';
   h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="magnet" class="h-3 w-3"></i>' + t('snapToGrid') + '</label><div class="switch' + (S.snapToGrid ? ' active' : '') + '" onclick="S.snapToGrid=!S.snapToGrid;renderAll()"></div></div>';
   if (S.snapToGrid) {
-    h += '<div class="space-y-1"><div class="flex items-center justify-between"><span class="text-[10px] text-gray-500">' + t('gridStep') + '</span><span class="text-[10px] text-gray-500 font-mono tabular-nums">' + S.gridSize + ' mm</span></div>';
-    h += '<input type="range" min="1" max="50" step="1" value="' + S.gridSize + '" oninput="S.gridSize=Number(this.value)" onchange="S.gridSize=Number(this.value);drawDrawCanvas()" class="w-full"></div>';
+    h += '<div class="space-y-1"><div class="flex items-center justify-between"><span class="text-[10px] text-gray-500">' + t('gridStep') + '</span><span class="text-[10px] text-gray-500 font-mono tabular-nums" id="grid-step-val">' + S.gridSize + ' mm</span></div>';
+    h += '<input type="range" min="1" max="50" step="1" value="' + S.gridSize + '" oninput="S.gridSize=Number(this.value);document.getElementById(\'grid-step-val\').textContent=Number(this.value)+\' mm\';drawDrawCanvas()" onchange="S.gridSize=Number(this.value);drawDrawCanvas()" class="w-full"></div>';
   }
   h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="compass" class="h-3 w-3"></i>' + t('angleSnap') + '</label><span class="text-[10px] font-mono text-gray-500 tabular-nums">' + (S.angleSnap === 'none' ? '\u2014' : S.angleSnap + '°') + '</span></div>';
   h += '<div class="flex gap-1">';

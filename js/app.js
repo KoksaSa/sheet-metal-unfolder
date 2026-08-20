@@ -45,6 +45,12 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         S.drawFromIdx = null;
         drawDrawCanvas();
+      } else if (S.toolMode !== 'select') {
+        // Esc переключает на инструмент «Выбор»
+        e.preventDefault();
+        S.toolMode = 'select';
+        S.drawFromIdx = null;
+        renderAll();
       }
       break;
   }
