@@ -16,6 +16,7 @@ const S = {
   punchOffsetX: 0,
   punchOffsetY: 0,
   previewBendIdx: null,
+  previewFlip: false,
   checkDieHeight: true,
   viewport: { offsetX: 0, offsetY: 0, scale: 3 },
   unfoldResult: null,

@@ -714,7 +714,7 @@ function drawDrawCanvas() {
 
   // ==================== FOLDED PREVIEW ====================
   if (S.showToolsOnCanvas && S.previewBendIdx !== null && S.previewBendIdx >= 0) {
-    const folded = computeFoldedPoints(S.previewBendIdx);
+    const folded = computeFoldedPoints(S.previewBendIdx, S.previewFlip);
     if (folded && folded.length >= 2) {
       // Glow
       drawCtx.save();
@@ -761,15 +761,18 @@ function drawDrawCanvas() {
       drawCtx.font = 'bold 11px sans-serif';
       drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
       const labelPt = w2c(0, 0);
-      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°) — предпросмотр', labelPt.cx, labelPt.cy - 40);
+      const flipTxt = S.previewFlip ? ' ←' : ' →';
+      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°)' + flipTxt + ' — клик ещё раз для смены направления, Esc — выход', labelPt.cx, labelPt.cy - 40);
     }
   }
 }
 
 // Вычисляет точки согнутого контура для предпросмотра на станке.
-// Точка гиба → (0,0), сегмент «до» — на матрице (ось -X), «после» — поворот на угол.
-// Последующие гибы сгибаются каскадно.
-function computeFoldedPoints(bendIdx) {
+// Вершина гиба → на кончике пуансона (punchOffsetX, punchOffsetY).
+// Угол гиба делится пополам, биссектриса коллинеарна оси Y (вертикально, к пуансону).
+// V-образный угол лежит в ручье матрицы, пуансон давит сверху.
+// Направление (flip = mirror) позволяет выбрать сторону сгиба.
+function computeFoldedPoints(bendIdx, flip) {
   if (!S.unfoldResult || !S.unfoldResult.bendInfos) return null;
   const bends = S.unfoldResult.bendInfos;
   if (bendIdx < 0 || bendIdx >= bends.length) return null;
@@ -778,6 +781,9 @@ function computeFoldedPoints(bendIdx) {
   const pts = S.points;
   if (v < 1 || v >= pts.length - 1) return null;
 
+  const pOX = S.punchOffsetX || 0;
+  const pOY = S.punchOffsetY || 0;
+
   // Длины сегментов
   const segLens = [];
   for (let i = 0; i < pts.length - 1; i++) {
@@ -785,24 +791,38 @@ function computeFoldedPoints(bendIdx) {
   }
 
   const folded = new Array(pts.length);
-  folded[v] = { x: 0, y: 0 };
+  folded[v] = { x: pOX, y: pOY };
 
-  // Точки ДО гиба: лежат плоско на матрице, тянутся влево (-X)
+  const bendAngle = b.bendAngle;
+  const sign = flip ? -1 : 1;
+
+  // «До» гиба: направление от вершины ВЛЕВО под углом bendAngle/2 от вертикали
+  // (биссектриса угла коллинеарна оси Y). Каскадные гибы складываются.
+  let beforeAngle = Math.PI / 2 + sign * bendAngle / 2;
   for (let i = v - 1; i >= 0; i--) {
-    folded[i] = { x: folded[i + 1].x - segLens[i], y: 0 };
+    folded[i] = {
+      x: folded[i + 1].x + segLens[i] * Math.cos(beforeAngle),
+      y: folded[i + 1].y + segLens[i] * Math.sin(beforeAngle)
+    };
+    // Гиб на вершине i меняет угол для следующего сегмента (в обратном направлении)
+    if (i > 0) {
+      const bendAt = bends.find(bb => bb.vertexIndex === i);
+      if (bendAt) beforeAngle -= sign * bendAt.deflection;
+    }
   }
 
-  // Точки ПОСЛЕ гиба: каскад с накоплением углов
-  let cumAngle = b.deflection;
+  // «После» гиба: направление от вершины ВПРАВО под углом bendAngle/2 от вертикали.
+  let afterAngle = Math.PI / 2 - sign * bendAngle / 2;
   for (let i = v + 1; i < pts.length; i++) {
-    if (i > v + 1) {
-      const bendAt = bends.find(bb => bb.vertexIndex === i - 1);
-      if (bendAt) cumAngle += bendAt.deflection;
-    }
     folded[i] = {
-      x: folded[i - 1].x + segLens[i - 1] * Math.cos(cumAngle),
-      y: folded[i - 1].y + segLens[i - 1] * Math.sin(cumAngle)
+      x: folded[i - 1].x + segLens[i - 1] * Math.cos(afterAngle),
+      y: folded[i - 1].y + segLens[i - 1] * Math.sin(afterAngle)
     };
+    // Гиб на вершине i меняет угол для следующего сегмента
+    if (i < pts.length - 1) {
+      const bendAt = bends.find(bb => bb.vertexIndex === i);
+      if (bendAt) afterAngle += sign * bendAt.deflection;
+    }
   }
 
   return folded;
@@ -1826,7 +1846,13 @@ drawCanvas.addEventListener('mousedown', e => {
       if (idx !== null) {
         const bendIdx = S.unfoldResult.bendInfos.findIndex(b => b.vertexIndex === idx);
         if (bendIdx >= 0) {
-          S.previewBendIdx = bendIdx;
+          // Клик на тот же гиб — переключаем направление (flip)
+          if (S.previewBendIdx === bendIdx) {
+            S.previewFlip = !S.previewFlip;
+          } else {
+            S.previewBendIdx = bendIdx;
+            S.previewFlip = false;
+          }
           drawDrawCanvas();
           return;
         }
