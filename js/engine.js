@@ -44,11 +44,9 @@ function getMetalDensity(mtIdx, thick) {
  * @param {boolean} hasBendBefore - есть ли гиб на другом конце полки до
  * @param {boolean} hasBendAfter - есть ли гиб на другом конце полки после
  * @param {boolean} checkDieHeight - проверять ли высоту матрицы
- * @param {number} prevDeflection - направление предыдущего гиба (0 если нет)
- * @param {number} nextDeflection - направление следующего гиба (0 если нет)
  * @returns {{ok: boolean, problems: string[], warnings: string[]}} результат проверки
  */
-function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight, prevDeflection, nextDeflection) {
+function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, punch, hasBendBefore, hasBendAfter, checkDieHeight) {
   const problems = [];
   const warnings = [];
   const bendDeg = bend.bendAngle * 180 / Math.PI;
@@ -78,25 +76,12 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, bendRadius, die, 
     }
   }
 
-  // 4. Проверка высоты матрицы: если на полке два гиба в РАЗНЫХ направлениях
-  //    (Z-профиль, ступенька), полка между ними должна быть достаточно длинной,
-  //    чтобы матрица поместилась — уже согнутая полка смотрит ВНИЗ к матрице.
-  //    Для U-профиля (гибы в одну сторону) полки смотрят ВВЕРХ от матрицы —
-  //    матрица свободно входит, проверка не нужна.
-  //    Формула: H × sin(угол/2) + V/2 (проекция высоты матрицы на полку).
-  if (checkDieHeight && die.height > 0 && half > 0) {
-    const minFlangeBetween = die.height * Math.sin(half) + die.vWidth / 2;
-    const curDef = bend.deflection || 0;
-    // Проверяем только если соседний гиб в ПРОТИВОПОЛОЖНОМ направлении (Z-профиль)
-    const prevOpposite = hasBendBefore && prevDeflection * curDef < 0;
-    const nextOpposite = hasBendAfter && nextDeflection * curDef < 0;
-    if (prevOpposite && segBeforeLen < minFlangeBetween) {
-      problems.push('Полка слева ' + segBeforeLen.toFixed(1) + ' мм: матрица (высота ' + die.height + ' мм) не поместится между гибами (Z-профиль), нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
-    }
-    if (nextOpposite && segAfterLen < minFlangeBetween) {
-      problems.push('Полка справа ' + segAfterLen.toFixed(1) + ' мм: матрица (высота ' + die.height + ' мм) не поместится между гибами (Z-профиль), нужно ≥ ' + minFlangeBetween.toFixed(1) + ' мм');
-    }
-  }
+  // 4. Проверка высоты матрицы между гибами — УБРАНА.
+  //    Физика: при гибке уже согнутая полка идёт ВДОЛЬ тела матрицы (вниз),
+  //    а не ВНУТРЬ неё. Матрица стоит под листом, полка свисает рядом.
+  //    Высота матрицы не ограничивает гибку Z- или U-профиля.
+  //    Реальные ограничения покрыты проверками: мин. полка по V-ручью (#3)
+  //    и предупреждение про упор в подложку (#5).
 
   // 5. Крайняя полка длиннее высоты матрицы — при гибке кромка может
   //    упереться в подложку (стол / станину пресса).
@@ -188,9 +173,7 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
       beforeLen = Math.max(0, beforeLen);
       afterLen = Math.max(0, afterLen);
       const checkDH = typeof S !== 'undefined' && S.checkDieHeight;
-      const prevDef = prevBend ? prevBend.deflection : 0;
-      const nextDef = nextBend ? nextBend.deflection : 0;
-      const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH, prevDef, nextDef);
+      const result = checkBendFeasibility(b, beforeLen, afterLen, bendRadius, die, punch, !!prevBend, !!nextBend, checkDH);
       b.feasible = result.ok;
       b.problems = result.problems;
       b.warnings = result.warnings;
