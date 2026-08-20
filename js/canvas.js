@@ -408,8 +408,22 @@ function drawDrawCanvas() {
         const ar = 18;
         const bInfo = bendFeasMap[i];
         const infeasible = bInfo && bInfo.feasible === false;
+
+        // Дуга показывает УГОЛ ПОВОРОТА контура (внутренний угол профиля = π − ba).
+        // Она идёт от направления входа (продолжение входящего сегмента, aIn + π)
+        // к направлению выхода (aOut) — то есть ложится «между двумя линиями»:
+        // между прямой, вдоль которой шёл контур, и следующим сегментом.
+        // В экранных углах (Y перевёрнут): cs = -aIn + π, ce = -aOut.
+        const cs = -aIn + Math.PI;
+        const ce = -aOut;
+        let ds = ce - cs;
+        while (ds > Math.PI) ds -= 2 * Math.PI;
+        while (ds <= -Math.PI) ds += 2 * Math.PI;
+        // |ds| = π − ba = угол поворота контура
+        const ccw = ds < 0;
+
         drawCtx.beginPath();
-        drawCtx.arc(p.cx, p.cy, ar, -aIn, -aOut, def > 0);
+        drawCtx.arc(p.cx, p.cy, ar, cs, ce, ccw);
         drawCtx.strokeStyle = infeasible ? '#ef4444' : (isDark ? '#fbbf24' : '#f59e0b');
         drawCtx.lineWidth = infeasible ? 3 : 1.5;
         drawCtx.stroke();
@@ -421,11 +435,7 @@ function drawDrawCanvas() {
           drawCtx.lineWidth = 2;
           drawCtx.stroke();
         }
-        const ccw = def > 0;
-        const sweep = ccw
-          ? ((-aIn - (-aOut)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)
-          : ((-aOut - (-aIn)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-        const mid = ccw ? -aIn - sweep / 2 : -aIn + sweep / 2;
+        const mid = cs + ds / 2;
         drawCtx.font = 'bold 9px sans-serif';
         const angleText = ((180 - ba * 180 / Math.PI)).toFixed(0) + '°';
         const atw = drawCtx.measureText(angleText).width + 8;
