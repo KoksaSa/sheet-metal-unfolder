@@ -707,161 +707,111 @@ function drawDrawCanvas() {
   }
 
   // ==================== TOOL OVERLAY (1:1 scale) ====================
-  if (S.showToolsOnCanvas && S.points.length >= 2 && S.unfoldResult && S.unfoldResult.bendInfos) {
+  if (S.showToolsOnCanvas) {
     drawToolsOnCanvas(isDark);
   }
 }
 
-// Рисует матрицу и пуансон в масштабе 1:1 у каждого гиба
+// Рисует матрицу и пуансон в масштабе 1:1 в центре координатной сетки.
+// (0,0) = центр ручья матрицы (ось гиба). Верхняя грань матрицы — на оси X.
+// Пуансон сверху (Y+), матрица снизу (Y-).
 function drawToolsOnCanvas(isDark) {
   const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
   const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
   if (!die || !punch) return;
 
-  const bends = S.unfoldResult.bendInfos;
-  if (!bends || !bends.length) return;
-  const pts = S.points;
   const sc = S.viewport.scale;
 
-  bends.forEach((b, bi) => {
-    const v = b.vertexIndex;
-    if (v < 1 || v >= pts.length - 1) return;
-    const pPrev = pts[v - 1], pCur = pts[v], pNext = pts[v + 1];
+  // === Матрица ===
+  const vW = die.vWidth, dH = die.height;
+  const halfV = vW / 2;
+  const depth = dH * 0.55; // глубина V-ручья (доля высоты)
+  const wallW = halfV;     // ширина стенки матрицы от ручья
 
-    // Направление сегмента «до» (от гиба к началу)
-    const dx1 = pPrev.x - pCur.x, dy1 = pPrev.y - pCur.y;
-    const len1 = Math.hypot(dx1, dy1) || 1;
-    // Направление сегмента «после» (от гиба к концу)
-    const dx2 = pNext.x - pCur.x, dy2 = pNext.y - pCur.y;
-    const len2 = Math.hypot(dx2, dy2) || 1;
+  // Точки в мировых координатах (Y+ вверх, Y- вниз от оси X)
+  // Верхняя грань матрицы лежит на Y=0
+  const mL_edge_x = -halfV - wallW;      // левый край матрицы
+  const mR_edge_x = halfV + wallW;       // правый край матрицы
+  const vL_x = -halfV, vR_x = halfV;     // края ручья
+  const vBottom_x = 0, vBottom_y = -depth; // дно ручья
+  const mBottom_y = -dH;                 // низ матрицы
 
-    // Биссектриса внешнего угла (направление «наружу» от профиля)
-    const bx = (dx1 / len1 + dx2 / len2), by = (dy1 / len1 + dy2 / len2);
-    const bLen = Math.hypot(bx, by) || 1;
-    // Нормаль к биссектрисе — направление «внутрь» гиба (к матрице)
-    const nx = -by / bLen, ny = bx / bLen;
+  // Контур матрицы: верх-лево → V-лево → дно V → V-право → верх-право → вниз → низ → вверх
+  drawCtx.strokeStyle = isDark ? '#3b82f6aa' : '#3b82f6cc';
+  drawCtx.fillStyle = isDark ? '#3b82f618' : '#3b82f615';
+  drawCtx.lineWidth = 1.5;
+  drawCtx.beginPath();
+  const p = (x, y) => w2c(x, y);
+  let q = p(mL_edge_x, 0);
+  drawCtx.moveTo(q.cx, q.cy);
+  q = p(vL_x, 0);
+  drawCtx.lineTo(q.cx, q.cy);
+  q = p(vBottom_x, vBottom_y);
+  drawCtx.lineTo(q.cx, q.cy);
+  q = p(vR_x, 0);
+  drawCtx.lineTo(q.cx, q.cy);
+  q = p(mR_edge_x, 0);
+  drawCtx.lineTo(q.cx, q.cy);
+  q = p(mR_edge_x, mBottom_y);
+  drawCtx.lineTo(q.cx, q.cy);
+  q = p(mL_edge_x, mBottom_y);
+  drawCtx.lineTo(q.cx, q.cy);
+  drawCtx.closePath();
+  drawCtx.fill();
+  drawCtx.stroke();
 
-    // Матрица: под листом (сторона матрицы = направление внутрь гиба)
-    // Пуансон: над листом (сторона пуансона = направление наружу)
-    const dieSide = b.isInward ? 1 : -1;  // inward = гиб вниз = матрица снизу
-    const punchSide = -dieSide;
+  // Подпись матрицы
+  const dl = p(0, mBottom_y);
+  drawCtx.fillStyle = isDark ? '#6085f0' : '#2563eb';
+  drawCtx.font = '9px sans-serif';
+  drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+  drawCtx.fillText((S.lang === 'en' ? die.nameEn : die.nameRu) || 'Die', dl.cx, dl.cy - 3);
 
-    const cx0 = pCur.x, cy0 = pCur.y;
+  // === Пуансон ===
+  const punchR = punch.radius || 1, pS = punch.swidth || 20, pH = punch.height || 40;
+  // Вершина пуансона касается оси X (верх листа)
+  const pTipY = 0;
+  const pL_x = -pS / 2, pR_x = pS / 2;     // края пуансона
+  const pTopY = pTipY + pH;                 // верх пуансона
 
-    // === Матрица (V-образ) ===
-    const vW = die.vWidth, dH = die.height;
-    const halfV = vW / 2;
-    // Вершина V (низ ручья) — на расстоянии dH от листа в сторону матрицы
-    const dieDirX = nx * dieSide, dieDirY = ny * dieSide;
-    // Точки верхней грани матрицы (слева и справа от ручья)
-    const dieTopL_x = cx0 + (-ny * dieSide) * halfV + dieDirX * 0;
-    const dieTopL_y = cy0 + (nx * dieSide) * halfV + dieDirY * 0;
-    const dieTopR_x = cx0 - (-ny * dieSide) * halfV + dieDirX * 0;
-    const dieTopR_y = cy0 - (nx * dieSide) * halfV + dieDirY * 0;
+  drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
+  drawCtx.fillStyle = isDark ? '#ef444418' : '#ef444415';
+  drawCtx.lineWidth = 1.5;
+  drawCtx.beginPath();
+  q = p(0, pTipY);
+  drawCtx.moveTo(q.cx, q.cy);
+  // Скругление вершины радиусом R (от левого края до правого)
+  const pLpt = p(pL_x, 0);
+  const pRpt = p(pR_x, 0);
+  const angleL = Math.atan2(pLpt.cy - q.cy, pLpt.cx - q.cx);
+  const angleR = Math.atan2(pRpt.cy - q.cy, pRpt.cx - q.cx);
+  drawCtx.arc(q.cx, q.cy, punchR * sc, angleL, angleR, false);
+  q = p(pR_x, pTopY);
+  drawCtx.lineTo(q.cx, q.cy);
+  q = p(pL_x, pTopY);
+  drawCtx.lineTo(q.cx, q.cy);
+  drawCtx.lineTo(pLpt.cx, pLpt.cy);
+  drawCtx.closePath();
+  drawCtx.fill();
+  drawCtx.stroke();
 
-    // Точки V-ручья (верхние края + дно)
-    const vL_x = cx0 + (-ny * dieSide) * halfV;
-    const vL_y = cy0 + (nx * dieSide) * halfV;
-    const vR_x = cx0 - (-ny * dieSide) * halfV;
-    const vR_y = cy0 - (nx * dieSide) * halfV;
-    const vBottom_x = cx0 + dieDirX * dH * 0.6;
-    const vBottom_y = cy0 + dieDirY * dH * 0.6;
+  // Подпись пуансона
+  const pl = p(0, pTopY);
+  drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
+  drawCtx.font = '9px sans-serif';
+  drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+  drawCtx.fillText((S.lang === 'en' ? punch.nameEn : punch.nameRu) || 'Punch', pl.cx, pl.cy + 3);
 
-    // Внешние углы матрицы (низ)
-    const dieBL_x = vL_x + dieDirX * dH;
-    const dieBL_y = vL_y + dieDirY * dH;
-    const dieBR_x = vR_x + dieDirX * dH;
-    const dieBR_y = vR_y + dieDirY * dH;
-    // Левый и правый края матрицы (по ширине V + запас)
-    const dieOL_x = dieBL_x + (-ny * dieSide) * halfV;
-    const dieOL_y = dieBL_y + (nx * dieSide) * halfV;
-    const dieOR_x = dieBR_x - (-ny * dieSide) * halfV;
-    const dieOR_y = dieBR_y - (nx * dieSide) * halfV;
-    const dieTL_x = dieOL_x - dieDirX * dH;
-    const dieTL_y = dieOL_y - dieDirY * dH;
-    const dieTR_x = dieOR_x - dieDirX * dH;
-    const dieTR_y = dieOR_y - dieDirY * dH;
-
-    // Рисуем матрицу
-    drawCtx.strokeStyle = isDark ? '#3b82f6aa' : '#3b82f6cc';
-    drawCtx.fillStyle = isDark ? '#3b82f618' : '#3b82f615';
-    drawCtx.lineWidth = 1.5;
-    drawCtx.beginPath();
-    // Контур: верх-лево → V-лево → дно V → V-право → верх-право → низ-право → низ-лево → верх-лево
-    const dTL = w2c(dieTL_x, dieTL_y);
-    const dVL = w2c(vL_x, vL_y);
-    const dVB = w2c(vBottom_x, vBottom_y);
-    const dVR = w2c(vR_x, vR_y);
-    const dTR = w2c(dieTR_x, dieTR_y);
-    const dOR = w2c(dieOR_x, dieOR_y);
-    const dBR = w2c(dieBR_x, dieBR_y);
-    const dBL = w2c(dieBL_x, dieBL_y);
-    const dOL = w2c(dieOL_x, dieOL_y);
-    drawCtx.moveTo(dTL.cx, dTL.cy);
-    drawCtx.lineTo(dVL.cx, dVL.cy);
-    drawCtx.lineTo(dVB.cx, dVB.cy);
-    drawCtx.lineTo(dVR.cx, dVR.cy);
-    drawCtx.lineTo(dTR.cx, dTR.cy);
-    drawCtx.lineTo(dOR.cx, dOR.cy);
-    drawCtx.lineTo(dBR.cx, dBR.cy);
-    drawCtx.lineTo(dBL.cx, dBL.cy);
-    drawCtx.lineTo(dOL.cx, dOL.cy);
-    drawCtx.closePath();
-    drawCtx.fill();
-    drawCtx.stroke();
-
-    // Подпись матрицы
-    const dieLabelPt = w2c(dieBL_x + dieDirX * 5, dieBL_y + dieDirY * 5);
-    drawCtx.fillStyle = isDark ? '#6085f0' : '#2563eb';
-    drawCtx.font = '9px sans-serif';
-    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
-    drawCtx.fillText((S.lang === 'en' ? die.nameEn : die.nameRu) || 'Die', dieLabelPt.cx, dieLabelPt.cy);
-
-    // === Пуансон ===
-    const punchR = punch.radius, pS = punch.swidth || 20, pH = punch.height || 40;
-    const punchDirX = nx * punchSide, punchDirY = ny * punchSide;
-    // Вершина пуансона (радиус) — касается листа
-    const pTipX = cx0 + punchDirX * punchR;
-    const pTipY = cy0 + punchDirY * punchR;
-    // Левая и правая грани пуансона
-    const pL_x = pTipX + (-ny * punchSide) * (pS / 2);
-    const pL_y = pTipY + (nx * punchSide) * (pS / 2);
-    const pRgt_x = pTipX - (-ny * punchSide) * (pS / 2);
-    const pRgt_y = pTipY - (nx * punchSide) * (pS / 2);
-    // Верх пуансона
-    const pTL_x = pL_x + punchDirX * pH;
-    const pTL_y = pL_y + punchDirY * pH;
-    const pTR_x = pRgt_x + punchDirX * pH;
-    const pTR_y = pRgt_y + punchDirY * pH;
-
-    // Рисуем пуансон
-    drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
-    drawCtx.fillStyle = isDark ? '#ef444418' : '#ef444415';
-    drawCtx.lineWidth = 1.5;
-    drawCtx.beginPath();
-    const pTip = w2c(pTipX, pTipY);
-    const pL = w2c(pL_x, pL_y);
-    const pRgt = w2c(pRgt_x, pRgt_y);
-    const pTL = w2c(pTL_x, pTL_y);
-    const pTR = w2c(pTR_x, pTR_y);
-    // Контур: вершина → лево → верх-лево → верх-право → право → вершина
-    drawCtx.moveTo(pTip.cx, pTip.cy);
-    // Скругление вершины (радиус)
-    drawCtx.arc(pTip.cx, pTip.cy, punchR * sc, Math.atan2(pL.cy - pTip.cy, pL.cx - pTip.cx), Math.atan2(pRgt.cy - pTip.cy, pRgt.cx - pTip.cx), false);
-    drawCtx.lineTo(pTL.cx, pTL.cy);
-    drawCtx.lineTo(pTR.cx, pTR.cy);
-    drawCtx.lineTo(pRgt.cx, pRgt.cy);
-    drawCtx.closePath();
-    drawCtx.fill();
-    drawCtx.stroke();
-
-    // Подпись пуансона
-    const punchLabelPt = w2c(pTL_x + punchDirX * 5 + (pTR_x - pTL_x) / 2, pTL_y + punchDirY * 5 + (pTR_y - pTL_y) / 2);
-    drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
-    drawCtx.font = '9px sans-serif';
-    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
-    drawCtx.fillText((S.lang === 'en' ? punch.nameEn : punch.nameRu) || 'Punch', punchLabelPt.cx, punchLabelPt.cy);
-  });
+  // Осевая линия ручья (пунктир)
+  drawCtx.strokeStyle = isDark ? '#88888888' : '#88888866';
+  drawCtx.lineWidth = 1;
+  drawCtx.setLineDash([4, 3]);
+  drawCtx.beginPath();
+  const o = w2c(0, 0);
+  drawCtx.moveTo(o.cx, o.cy - pTopY * sc);
+  drawCtx.lineTo(o.cx, o.cy - mBottom_y * sc);
+  drawCtx.stroke();
+  drawCtx.setLineDash([]);
 }
 
 // ==================== UNFOLD CANVAS ====================
