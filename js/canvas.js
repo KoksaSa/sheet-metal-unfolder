@@ -711,6 +711,101 @@ function drawDrawCanvas() {
   if (S.showToolsOnCanvas) {
     drawToolsOnCanvas(isDark);
   }
+
+  // ==================== FOLDED PREVIEW ====================
+  if (S.showToolsOnCanvas && S.previewBendIdx !== null && S.previewBendIdx >= 0) {
+    const folded = computeFoldedPoints(S.previewBendIdx);
+    if (folded && folded.length >= 2) {
+      // Glow
+      drawCtx.save();
+      drawCtx.strokeStyle = isDark ? '#f59e0b33' : '#f59e0b22';
+      drawCtx.lineWidth = 8;
+      drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+      drawCtx.beginPath();
+      const gf = w2c(folded[0].x, folded[0].y);
+      drawCtx.moveTo(gf.cx, gf.cy);
+      for (let i = 1; i < folded.length; i++) {
+        const p = w2c(folded[i].x, folded[i].y);
+        drawCtx.lineTo(p.cx, p.cy);
+      }
+      drawCtx.stroke();
+      drawCtx.restore();
+
+      // Main line
+      drawCtx.strokeStyle = isDark ? '#f59e0b' : '#d97706';
+      drawCtx.lineWidth = 2.5;
+      drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+      drawCtx.beginPath();
+      const f0 = w2c(folded[0].x, folded[0].y);
+      drawCtx.moveTo(f0.cx, f0.cy);
+      for (let i = 1; i < folded.length; i++) {
+        const p = w2c(folded[i].x, folded[i].y);
+        drawCtx.lineTo(p.cx, p.cy);
+      }
+      drawCtx.stroke();
+
+      // Точки согнутого контура
+      folded.forEach((pt, i) => {
+        const c = w2c(pt.x, pt.y);
+        drawCtx.beginPath();
+        drawCtx.arc(c.cx, c.cy, 4, 0, Math.PI * 2);
+        drawCtx.fillStyle = isDark ? '#f59e0baa' : '#d97706aa';
+        drawCtx.fill();
+      });
+
+      // Подпись: какой гиб просматриваем
+      const bends = S.unfoldResult.bendInfos;
+      const b = bends[S.previewBendIdx];
+      const bendDeg = (b.bendAngle * 180 / Math.PI).toFixed(0);
+      drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+      drawCtx.font = 'bold 11px sans-serif';
+      drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
+      const labelPt = w2c(0, 0);
+      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°) — предпросмотр', labelPt.cx, labelPt.cy - 40);
+    }
+  }
+}
+
+// Вычисляет точки согнутого контура для предпросмотра на станке.
+// Точка гиба → (0,0), сегмент «до» — на матрице (ось -X), «после» — поворот на угол.
+// Последующие гибы сгибаются каскадно.
+function computeFoldedPoints(bendIdx) {
+  if (!S.unfoldResult || !S.unfoldResult.bendInfos) return null;
+  const bends = S.unfoldResult.bendInfos;
+  if (bendIdx < 0 || bendIdx >= bends.length) return null;
+  const b = bends[bendIdx];
+  const v = b.vertexIndex;
+  const pts = S.points;
+  if (v < 1 || v >= pts.length - 1) return null;
+
+  // Длины сегментов
+  const segLens = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    segLens.push(Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y));
+  }
+
+  const folded = new Array(pts.length);
+  folded[v] = { x: 0, y: 0 };
+
+  // Точки ДО гиба: лежат плоско на матрице, тянутся влево (-X)
+  for (let i = v - 1; i >= 0; i--) {
+    folded[i] = { x: folded[i + 1].x - segLens[i], y: 0 };
+  }
+
+  // Точки ПОСЛЕ гиба: каскад с накоплением углов
+  let cumAngle = b.deflection;
+  for (let i = v + 1; i < pts.length; i++) {
+    if (i > v + 1) {
+      const bendAt = bends.find(bb => bb.vertexIndex === i - 1);
+      if (bendAt) cumAngle += bendAt.deflection;
+    }
+    folded[i] = {
+      x: folded[i - 1].x + segLens[i - 1] * Math.cos(cumAngle),
+      y: folded[i - 1].y + segLens[i - 1] * Math.sin(cumAngle)
+    };
+  }
+
+  return folded;
 }
 
 // Находит центр V-ручья матрицы по зазору на верхней грани DXF-профиля.
@@ -1724,6 +1819,29 @@ drawCanvas.addEventListener('mousedown', e => {
       dragPunch = true;
       drawCanvas.style.cursor = 'grabbing';
       return;
+    }
+    // Проверяем клик по вершине гиба (предпросмотр согнутой детали)
+    if (S.showToolsOnCanvas && S.unfoldResult && S.unfoldResult.bendInfos) {
+      const idx = findNearPoint(cx, cy);
+      if (idx !== null) {
+        const bendIdx = S.unfoldResult.bendInfos.findIndex(b => b.vertexIndex === idx);
+        if (bendIdx >= 0) {
+          S.previewBendIdx = bendIdx;
+          drawDrawCanvas();
+          return;
+        }
+        // Клик по обычной точке — сброс предпросмотра
+        if (S.previewBendIdx !== null) {
+          S.previewBendIdx = null;
+          drawDrawCanvas();
+        }
+      } else {
+        // Клик мимо контура — сброс предпросмотра
+        if (S.previewBendIdx !== null) {
+          S.previewBendIdx = null;
+          drawDrawCanvas();
+        }
+      }
     }
     // Проверяем клик по hit areas (только сегменты — для редактирования длины)
     const hit = findHitArea(cx, cy);

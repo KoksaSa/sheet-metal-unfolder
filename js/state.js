@@ -15,6 +15,7 @@ const S = {
   showToolsOnCanvas: false,
   punchOffsetX: 0,
   punchOffsetY: 0,
+  previewBendIdx: null,
   checkDieHeight: true,
   viewport: { offsetX: 0, offsetY: 0, scale: 3 },
   unfoldResult: null,

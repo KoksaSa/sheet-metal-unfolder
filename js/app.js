@@ -40,6 +40,13 @@ document.addEventListener('keydown', e => {
     case 'm': S.toolMode = 'measure'; S.drawFromIdx = null; measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
     case 'f': S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 }; drawDrawCanvas(); break;
     case 'escape':
+      // Сброс предпросмотра гиба
+      if (S.previewBendIdx !== null) {
+        e.preventDefault();
+        S.previewBendIdx = null;
+        drawDrawCanvas();
+        return;
+      }
       // Сброс активной точки рисования
       if (S.toolMode === 'draw' && S.drawFromIdx !== null) {
         e.preventDefault();

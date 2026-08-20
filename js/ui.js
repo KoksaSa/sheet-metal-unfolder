@@ -639,7 +639,7 @@ function renderSnapSettings() {
   h += '</div>';
   h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('dimensionsOnCanvas') + '</label><div class="switch' + (S.showDimensions ? ' active' : '') + '" onclick="S.showDimensions=!S.showDimensions;drawDrawCanvas()"></div></div>';
   h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="crosshair" class="h-3 w-3"></i>' + t('axisLabels') + '</label><div class="switch' + (S.showAxisLabels ? ' active' : '') + '" onclick="S.showAxisLabels=!S.showAxisLabels;drawDrawCanvas()"></div></div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.punchOffsetX=0;S.punchOffsetY=0;}drawDrawCanvas()"></div></div>';
+  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.punchOffsetX=0;S.punchOffsetY=0;S.previewBendIdx=null;}drawDrawCanvas()"></div></div>';
   c.innerHTML = h;
 }
 
