@@ -1,37 +1,37 @@
 // ==================== METAL TYPES & PRESETS ====================
 const METAL_TYPES = [
   {
-    nameRu: 'Сталь', nameEn: 'Steel', kFactor: 0.38,
+    nameRu: 'Сталь', nameEn: 'Steel', kFactor: 0.38, tensile: 400,
     defaultThickness: 1.5,
     densities: { 0.5: 7.85e-6, 1: 7.85e-6, 1.5: 7.85e-6, 2: 7.85e-6, 3: 7.85e-6 }
   },
   {
-    nameRu: 'Нержавеющая сталь', nameEn: 'Stainless Steel', kFactor: 0.5,
+    nameRu: 'Нержавеющая сталь', nameEn: 'Stainless Steel', kFactor: 0.5, tensile: 600,
     defaultThickness: 0.8,
     densities: { 0.5: 7.93e-6, 1: 7.93e-6, 1.5: 7.93e-6, 2: 7.93e-6 }
   },
   {
-    nameRu: 'Алюминий', nameEn: 'Aluminum', kFactor: 0.33,
+    nameRu: 'Алюминий', nameEn: 'Aluminum', kFactor: 0.33, tensile: 200,
     defaultThickness: 1.5,
     densities: { 0.5: 2.7e-6, 1: 2.7e-6, 1.5: 2.7e-6, 2: 2.7e-6, 3: 2.7e-6 }
   },
   {
-    nameRu: 'Медь', nameEn: 'Copper', kFactor: 0.35,
+    nameRu: 'Медь', nameEn: 'Copper', kFactor: 0.35, tensile: 250,
     defaultThickness: 1,
     densities: { 0.5: 8.96e-6, 1: 8.96e-6, 1.5: 8.96e-6, 2: 8.96e-6 }
   },
   {
-    nameRu: 'Латунь', nameEn: 'Brass', kFactor: 0.35,
+    nameRu: 'Латунь', nameEn: 'Brass', kFactor: 0.35, tensile: 350,
     defaultThickness: 1,
     densities: { 0.5: 8.5e-6, 1: 8.5e-6, 1.5: 8.5e-6, 2: 8.5e-6 }
   },
   {
-    nameRu: 'Оцинкованная сталь', nameEn: 'Galvanized Steel', kFactor: 0.40,
+    nameRu: 'Оцинкованная сталь', nameEn: 'Galvanized Steel', kFactor: 0.40, tensile: 400,
     defaultThickness: 0.8,
     densities: { 0.5: 7.85e-6, 0.8: 7.85e-6, 1: 7.85e-6, 1.2: 7.85e-6, 1.5: 7.85e-6 }
   },
   {
-    nameRu: 'Пользовательский', nameEn: 'Custom', kFactor: 0.38,
+    nameRu: 'Пользовательский', nameEn: 'Custom', kFactor: 0.38, tensile: 400,
     defaultThickness: 1.5,
     densities: { 0.5: 7.85e-6, 1: 7.85e-6, 1.5: 7.85e-6, 2: 7.85e-6, 3: 7.85e-6 }
   }

@@ -31,6 +31,31 @@ function getMetalDensity(mtIdx, thick) {
   return d;
 }
 
+/**
+ * Расчёт усилия свободной гибки (air bending) на V-матрице.
+ * Формула: F = 1.33 × σв × L × t² / V — для угла 90°.
+ * Поправка на угол (чем острее внутренний угол, тем больше усилие):
+ *   F(α) = F(90°) × sin(45°) / sin(α/2)
+ * Итог: F = 0.94 × σв × L × t² / (V × sin(α/2)), Н.
+ * @param {number} interiorAngleRad - внутренний угол гиба (угол между полками), рад
+ * @param {number} thickness - толщина металла, мм
+ * @param {number} width - длина гиба (ширина заготовки), мм
+ * @param {object} die - матрица {vWidth}
+ * @param {number} mtIdx - индекс металла (для предела прочности)
+ * @returns {{newtons: number, tons: number, tensile: number}} усилие
+ */
+function calcBendForce(interiorAngleRad, thickness, width, die, mtIdx) {
+  const mt = METAL_TYPES[mtIdx] || METAL_TYPES[0];
+  const tensile = mt.tensile || 400;
+  const V = die.vWidth;
+  const t = Math.max(0.01, thickness);
+  const L = Math.max(1, width);
+  const alpha = Math.max(0.05, Math.min(Math.PI - 0.05, interiorAngleRad));
+  const forceN = 0.94 * tensile * L * t * t / (V * Math.sin(alpha / 2));
+  const tons = forceN / 9810; // 1 тс ≈ 9.81 кН
+  return { newtons: forceN, tons: tons, tensile: tensile };
+}
+
 // ==================== BEND FEASIBILITY ====================
 /**
  * Проверка возможности гибки на выбранных матрице и пуансоне.

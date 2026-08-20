@@ -764,18 +764,30 @@ function drawDrawCanvas() {
         drawCtx.fill();
       });
 
-      // Подпись: какой гиб просматриваем
+      // Подпись: какой гиб просматриваем + усилие гибки
       const bends = S.unfoldResult.bendInfos;
       const b = bends[S.previewBendIdx];
-      const bendDeg = ((Math.PI - b.bendAngle) * 180 / Math.PI).toFixed(0);
+      const interiorRad = Math.PI - b.bendAngle;
+      const bendDeg = (interiorRad * 180 / Math.PI).toFixed(0);
+      // Усилие гибки
+      const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
+      const force = (die && typeof calcBendForce === 'function')
+        ? calcBendForce(interiorRad, S.metal.thickness, S.metal.width, die, S.metal.metalTypeIndex)
+        : null;
       drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
       drawCtx.font = 'bold 11px sans-serif';
       drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
       const labelPt = w2c(0, 0);
       const flipTxt = S.previewFlip ? ' ←' : ' →';
-      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°)' + flipTxt + ' — клик ещё раз для смены направления', labelPt.cx, labelPt.cy - 40);
+      drawCtx.fillText('Гиб ' + (S.previewBendIdx + 1) + ' (' + bendDeg + '°)' + flipTxt + ' — клик ещё раз для смены направления', labelPt.cx, labelPt.cy - 54);
       drawCtx.font = '9px sans-serif';
-      drawCtx.fillText('Тяни кружок ◉ чтобы задать точку сгиба на пуансоне, Esc — выход', labelPt.cx, labelPt.cy - 26);
+      drawCtx.fillText('Тяни кружок ◉ чтобы задать точку сгиба на пуансоне, Esc — выход', labelPt.cx, labelPt.cy - 40);
+      if (force) {
+        drawCtx.font = 'bold 10px sans-serif';
+        drawCtx.fillStyle = isDark ? '#60a5fa' : '#2563eb';
+        const tonsStr = force.tons < 1 ? force.tons.toFixed(2) : force.tons.toFixed(1);
+        drawCtx.fillText('Усилие: ' + tonsStr + ' тс (' + (force.newtons / 1000).toFixed(1) + ' кН)', labelPt.cx, labelPt.cy - 26);
+      }
 
       // === Точка сгибания (перетаскиваемая) ===
       const bp = w2c(S.bendPointX || 0, S.bendPointY || 0);
