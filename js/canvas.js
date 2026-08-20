@@ -819,15 +819,15 @@ function drawToolsOnCanvas(isDark) {
 
   // === Пуансон ===
   const pOX = S.punchOffsetX || 0;
+  const pOY = S.punchOffsetY || 0;
   drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
   drawCtx.fillStyle = isDark ? '#ef444418' : '#ef444415';
   drawCtx.lineWidth = 1.5;
 
   if (punch.profile && punch.profile.chains) {
     // Кастомный пуансон — рисуем реальный DXF-профиль
-    // Центр по X + смещение, вершина (низ профиля) на оси X (Y=0), тело вверх (Y+)
     const offX = -(punch.profile.minX + punch.profile.width / 2) + pOX;
-    const offY = -punch.profile.minY;
+    const offY = -punch.profile.minY + pOY;
     punch.profile.chains.forEach(chain => {
       drawCtx.beginPath();
       chain.forEach((p, pi) => {
@@ -847,7 +847,7 @@ function drawToolsOnCanvas(isDark) {
     const halfS = pS / 2;
     const pTopY = pH;
     const sc = S.viewport.scale;
-    const p = (x, y) => w2c(x + pOX, y);
+    const p = (x, y) => w2c(x + pOX, y + pOY);
     drawCtx.beginPath();
     // Вершина (центр, Y=0)
     let q = p(0, 0);
@@ -873,7 +873,7 @@ function drawToolsOnCanvas(isDark) {
 
   // Подпись пуансона
   const pH = punch.height || 50;
-  const pl = w2c(pOX, pH);
+  const pl = w2c(pOX, pH + pOY);
   drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
   drawCtx.font = '9px sans-serif';
   drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
@@ -891,12 +891,12 @@ function drawToolsOnCanvas(isDark) {
   drawCtx.setLineDash([]);
 
   // Индикатор смещения пуансона
-  if (Math.abs(pOX) > 0.01) {
-    const offPt = w2c(pOX, 0);
+  if (Math.abs(pOX) > 0.01 || Math.abs(pOY) > 0.01) {
+    const offPt = w2c(pOX, pOY);
     drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
     drawCtx.font = '9px sans-serif';
     drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
-    drawCtx.fillText('Δ ' + pOX.toFixed(1) + ' mm', offPt.cx, offPt.cy + 12);
+    drawCtx.fillText('Δ ' + pOX.toFixed(1) + ', ' + pOY.toFixed(1) + ' mm', offPt.cx, offPt.cy + 12);
   }
 }
 
@@ -1794,6 +1794,7 @@ drawCanvas.addEventListener('mousemove', e => {
     const w = c2w(cx, cy);
     const p = S.snapToGrid ? snapPoint(w) : w;
     S.punchOffsetX = p.x;
+    S.punchOffsetY = p.y;
     drawDrawCanvas();
     return;
   }

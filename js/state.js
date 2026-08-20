@@ -14,6 +14,7 @@ const S = {
   showAxisLabels: true,
   showToolsOnCanvas: false,
   punchOffsetX: 0,
+  punchOffsetY: 0,
   checkDieHeight: true,
   viewport: { offsetX: 0, offsetY: 0, scale: 3 },
   unfoldResult: null,
