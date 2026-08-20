@@ -80,19 +80,20 @@ function checkBendFeasibility(bend, segBeforeLen, segAfterLen, segBeforeFull, se
     }
   }
 
-  // 4. Полка между гибами с согнутой частью ВНИЗ (к матрице):
-  //    минимальная полка = V/2. Если уже согнутая полка (от соседнего гиба,
-  //    направленного вниз/внутрь) мешает сдвинуть деталь до центра ручья —
-  //    гибка невозможна. Используем ПОЛНУЮ длину сегмента (без вычета радиуса).
-  //    prevInward: предыдущий гиб загнул полку до — вниз к матрице.
-  //    curInward + nextBend: текущий гиб загибает полку после — вниз к матрице.
+  // 4. Полка между гибами в Z-профиле (гибы в РАЗНЫХ направлениях):
+  //    минимальная полка = V/2. В Z-профиле один гиб идёт вниз (к матрице),
+  //    другой вверх — если полка < V/2, уже согнутая вниз полка не даст
+  //    сдвинуть деталь до центра ручья. В U-профиле (гибы в одну сторону)
+  //    полки смотрят в одну сторону — проверка не нужна.
+  //    Z = соседние гибы в противоположных направлениях (inward ≠ neighbor).
+  //    Используем ПОЛНУЮ длину сегмента.
   const curInward = bend.isInward;
   const minZFlange = die.vWidth / 2;
-  if (hasBendBefore && prevInward && segBeforeFull < minZFlange) {
-    problems.push('Полка слева ' + segBeforeFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья');
+  if (hasBendBefore && prevInward !== curInward && segBeforeFull < minZFlange) {
+    problems.push('Полка слева ' + segBeforeFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья (Z-профиль)');
   }
-  if (hasBendAfter && curInward && segAfterFull < minZFlange) {
-    problems.push('Полка справа ' + segAfterFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья');
+  if (hasBendAfter && curInward !== nextInward && segAfterFull < minZFlange) {
+    problems.push('Полка справа ' + segAfterFull.toFixed(1) + ' мм меньше V/2 (' + minZFlange.toFixed(1) + ' мм) — уже согнутая полка не даст сдвинуть деталь до центра ручья (Z-профиль)');
   }
 
   // 5. Крайняя полка длиннее высоты матрицы — при гибке кромка может
