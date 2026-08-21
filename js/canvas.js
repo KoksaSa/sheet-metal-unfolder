@@ -287,10 +287,19 @@ function drawDrawCanvas() {
         const dx = -a.x, dy = -a.y;
         flatPts.forEach(p => { p.x += dx; p.y += dy; });
       }
+      // Развёрнутая линия (плоская). Пока нет активных гибов — это
+      // основной вид детали (сплошная). При наличии согнутых — ориентир.
+      const hasSimBends = S.simBends.length > 0;
       drawCtx.save();
-      drawCtx.strokeStyle = isDark ? '#3a3a4e88' : '#c0c0c088';
-      drawCtx.lineWidth = 1.5;
-      drawCtx.setLineDash([6, 4]);
+      if (hasSimBends) {
+        drawCtx.strokeStyle = isDark ? '#3a3a4e88' : '#c0c0c088';
+        drawCtx.lineWidth = 1.5;
+        drawCtx.setLineDash([6, 4]);
+      } else {
+        drawCtx.strokeStyle = isDark ? '#22c55e' : '#16a34a';
+        drawCtx.lineWidth = 2.5;
+        drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
+      }
       drawCtx.beginPath();
       if (flatPts) {
       const sf0 = w2c(flatPts[0].x, flatPts[0].y);
@@ -304,7 +313,9 @@ function drawDrawCanvas() {
       drawCtx.restore();
       }
 
-      // Согнутый контур (оранжевый)
+      // Согнутый контур (оранжевый) — только когда есть согнутые гибы.
+      // Пока ничего не согнуто — отображается только развёрнутая линия.
+      if (S.simBends.length > 0) {
       drawCtx.save();
       drawCtx.strokeStyle = isDark ? '#f59e0b33' : '#f59e0b22';
       drawCtx.lineWidth = 8;
@@ -328,8 +339,10 @@ function drawDrawCanvas() {
       }
       drawCtx.stroke();
       drawCtx.restore();
+      } // end if simBends > 0 (согнутый контур)
 
-      // Точки контура
+      // Точки контура (только для согнутого контура)
+      if (S.simBends.length > 0) {
       sim.pts.forEach(pt => {
         const c = w2c(pt.x, pt.y);
         drawCtx.beginPath();
@@ -337,6 +350,16 @@ function drawDrawCanvas() {
         drawCtx.fillStyle = isDark ? '#f59e0baa' : '#d97706aa';
         drawCtx.fill();
       });
+      } else {
+      // Вершины развёртки (маленькие точки на плоской линии)
+      flatPts.forEach(pt => {
+        const c = w2c(pt.x, pt.y);
+        drawCtx.beginPath();
+        drawCtx.arc(c.cx, c.cy, 3, 0, Math.PI * 2);
+        drawCtx.fillStyle = isDark ? '#22c55eaa' : '#16a34aaa';
+        drawCtx.fill();
+      });
+      }
 
       // Маркеры точек гиба
       sim.bendMarkers.forEach(m => {
@@ -982,9 +1005,8 @@ function computeSimPoints() {
   const active = Array.isArray(S.simBends) ? S.simBends : [];
 
   // Строим согнутый контур каскадно по сегментам исходного профиля.
-  // Каждый активный гиб поворачивает «хвост» ВВЕРХ (на пуансон),
-  // а не вниз (на матрицу). Излом в вершине острый (без фаски),
-  // как в предпросмотре отдельного гиба.
+  // Каждый активный гиб поворачивает «хвост» ВВЕРХ (на пуансон).
+  // Излом в вершине — острый (без фаски).
   const pts = S.points;
   const out = [{ x: pts[0].x, y: pts[0].y }];
   const bendMarkers = [];
@@ -999,25 +1021,64 @@ function computeSimPoints() {
     const ny = cur.y + Math.sin(angle) * segLen;
     out.push({ x: nx, y: ny });
 
-    // Гиб на вершине i+1
     const bi = bendAtVertex.get(i + 1);
     if (bi !== undefined) {
-      bendMarkers.push({ x: nx, y: ny, index: bi, angle });
+      bendMarkers.push({ x: nx, y: ny, index: bi, angle, outIdx: out.length - 1 });
       if (active.includes(bi)) {
-        // Знак «−»: deflection измерен так, что положительный поворот —
-        // вниз (на матрицу). Для гибки на пуансон инвертируем знак.
         angle -= bends[bi].deflection;
       }
     }
   }
 
-  // Якорь: последний активный гиб (или первый маркер) в центре V-ручья (0,0).
+  // Якорь: последний кликнутый гиб (последний элемент в simBends).
+  // Именно его вершина встаёт в центр V-ручья (0,0) с V-выравниванием.
+  // Если активных нет — первый маркер.
   let anchorIndex = 0;
-  for (let i = bendMarkers.length - 1; i >= 0; i--) {
-    if (active.includes(bendMarkers[i].index)) { anchorIndex = i; break; }
+  if (active.length > 0) {
+    const lastClicked = active[active.length - 1];
+    anchorIndex = bendMarkers.findIndex(m => m.index === lastClicked);
+    if (anchorIndex < 0) anchorIndex = 0;
   }
-  const anchor = bendMarkers[anchorIndex];
-  if (anchor) {
+  const hasActive = bendMarkers.some(m => active.includes(m.index));
+  if (bendMarkers.length) {
+    const anchor = bendMarkers[anchorIndex];
+    if (hasActive) {
+      const vIdx = anchor.outIdx;
+      const prevP = out[vIdx - 1];
+      const nextP = out[vIdx + 1];
+      if (prevP && nextP && bends[anchor.index]) {
+        // Направления полок от вершины (к предыдущей и следующей точке)
+        const d1 = Math.atan2(prevP.y - anchor.y, prevP.x - anchor.x);
+        const d2 = Math.atan2(nextP.y - anchor.y, nextP.x - anchor.x);
+        // Знак обхода контура
+        let s = d2 - d1;
+        while (s > Math.PI) s -= 2 * Math.PI;
+        while (s <= -Math.PI) s += 2 * Math.PI;
+        s = s >= 0 ? 1 : -1;
+        // Внутренний угол между полками (угол детали)
+        const interior = Math.PI - bends[anchor.index].bendAngle;
+        // Целевое направление полки «до»: биссектриса вертикальна (π/2)
+        const d1Target = Math.PI / 2 - s * interior / 2;
+        const rot = d1Target - d1;
+        // Поворачиваем весь контур вокруг вершины, чтобы угол встал V-образно
+        const cosR = Math.cos(rot), sinR = Math.sin(rot);
+        out.forEach(p => {
+          const dx = p.x - anchor.x, dy = p.y - anchor.y;
+          const rx = dx * cosR - dy * sinR;
+          const ry = dx * sinR + dy * cosR;
+          p.x = rx + anchor.x;
+          p.y = ry + anchor.y;
+        });
+        bendMarkers.forEach(m => {
+          const dx = m.x - anchor.x, dy = m.y - anchor.y;
+          const rx = dx * cosR - dy * sinR;
+          const ry = dx * sinR + dy * cosR;
+          m.x = rx + anchor.x;
+          m.y = ry + anchor.y;
+        });
+      }
+    }
+    // Сдвиг вершины якоря в (0,0)
     const dx = -anchor.x, dy = -anchor.y;
     out.forEach(p => { p.x += dx; p.y += dy; });
     bendMarkers.forEach(m => { m.x += dx; m.y += dy; });
