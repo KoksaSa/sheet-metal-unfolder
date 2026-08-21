@@ -15,6 +15,7 @@ const S = {
   showToolsOnCanvas: false,
   simMode: false,
   simBends: [], // индексы активных (согнутых) гибов в симуляции
+  bendOrder: [], // порядок гибки: массив индексов гибов в порядке кликов
   punchOffsetX: 0,
   punchOffsetY: 0,
   bendPointX: 0,

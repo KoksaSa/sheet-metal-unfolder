@@ -958,6 +958,74 @@ function renderMobileUnfold() {
 }
 
 // ==================== DRAWING GENERATOR ====================
+// Вычисление точек контура для заданной последовательности активных гибов.
+// Используется в чертеже для отрисовки миниатюр на каждом шаге.
+function computeSimPointsForDrawing(active, res, srcPts) {
+  if (!res || !srcPts || srcPts.length < 2) return null;
+  const bends = res.bendInfos || [];
+  const pts = srcPts;
+  const out = [{ x: pts[0].x, y: pts[0].y }];
+  const bendMarkers = [];
+  let angle = 0;
+  const bendAtVertex = new Map();
+  bends.forEach((b, idx) => bendAtVertex.set(b.vertexIndex, idx));
+  for (let i = 0; i < pts.length - 1; i++) {
+    const segLen = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    const cur = out[out.length - 1];
+    const nx = cur.x + Math.cos(angle) * segLen;
+    const ny = cur.y + Math.sin(angle) * segLen;
+    out.push({ x: nx, y: ny });
+    const bi = bendAtVertex.get(i + 1);
+    if (bi !== undefined) {
+      bendMarkers.push({ x: nx, y: ny, index: bi, outIdx: out.length - 1 });
+      if (active.includes(bi)) angle -= bends[bi].deflection;
+    }
+  }
+  // Якорь: последний активный
+  let anchorIndex = 0;
+  if (active.length > 0) {
+    const lastClicked = active[active.length - 1];
+    anchorIndex = bendMarkers.findIndex(m => m.index === lastClicked);
+    if (anchorIndex < 0) anchorIndex = 0;
+  }
+  const hasActive = active.length > 0;
+  if (bendMarkers.length) {
+    const anchor = bendMarkers[anchorIndex];
+    if (hasActive) {
+      const vIdx = anchor.outIdx;
+      const prevP = out[vIdx - 1];
+      const nextP = out[vIdx + 1];
+      if (prevP && nextP && bends[anchor.index]) {
+        const d1 = Math.atan2(prevP.y - anchor.y, prevP.x - anchor.x);
+        const d2 = Math.atan2(nextP.y - anchor.y, nextP.x - anchor.x);
+        let s = d2 - d1;
+        while (s > Math.PI) s -= 2 * Math.PI;
+        while (s <= -Math.PI) s += 2 * Math.PI;
+        s = s >= 0 ? 1 : -1;
+        const interior = Math.PI - bends[anchor.index].bendAngle;
+        const d1Target = Math.PI / 2 - s * interior / 2;
+        const rot = d1Target - d1;
+        const cosR = Math.cos(rot), sinR = Math.sin(rot);
+        out.forEach(p => {
+          const dx = p.x - anchor.x, dy = p.y - anchor.y;
+          const rx = dx * cosR - dy * sinR;
+          const ry = dx * sinR + dy * cosR;
+          p.x = rx + anchor.x; p.y = ry + anchor.y;
+        });
+        bendMarkers.forEach(m => {
+          const dx = m.x - anchor.x, dy = m.y - anchor.y;
+          const rx = dx * cosR - dy * sinR;
+          const ry = dx * sinR + dy * cosR;
+          m.x = rx + anchor.x; m.y = ry + anchor.y;
+        });
+      }
+    }
+    const dx = -anchor.x, dy = -anchor.y;
+    out.forEach(p => { p.x += dx; p.y += dy; });
+  }
+  return out;
+}
+
 function generateDrawing() {
   if (!S.unfoldResult || S.points.length < 2) return;
   const res = S.unfoldResult;
@@ -1393,6 +1461,114 @@ function generateDrawing() {
     }
   }
 
+  // === SECOND PAGE: BENDING SEQUENCE ===
+  let seqDataUrl = null;
+  const order = (S.bendOrder && S.bendOrder.length > 0) ? S.bendOrder : res.bendInfos.map((b, i) => i);
+  if (order.length > 0 && res.bendInfos.length > 0) {
+    const seqCv = document.createElement('canvas');
+    seqCv.width = CW; seqCv.height = CH;
+    const sctx = seqCv.getContext('2d');
+    sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, CW, CH);
+    sctx.strokeStyle = '#000'; sctx.lineWidth = 2;
+    sctx.strokeRect(border, border, CW - border * 2, CH - border * 2);
+
+    // Заголовок
+    sctx.fillStyle = '#333'; sctx.font = 'bold 14px sans-serif';
+    sctx.textAlign = 'center'; sctx.textBaseline = 'top';
+    sctx.fillText(S.lang === 'en' ? 'Bending Sequence' : 'Последовательность гибки', CW / 2, border + 8);
+    sctx.font = '10px sans-serif'; sctx.fillStyle = '#666';
+    sctx.fillText((S.metal.partNumber || '\u2014') + '  |  ' + dateStr, CW / 2, border + 26);
+
+    // Таблица: 2 колонки (шаг + миниатюра)
+    const tblTop = border + 45;
+    const tblBot = CH - border - 15;
+    const tblH = tblBot - tblTop;
+    const colW = (CW - border * 2 - 20) / 2;
+    const col1X = border + 10;
+    const col2X = col1X + colW + 10;
+    const rowH = Math.min(tblH / Math.ceil(order.length / 2), 80);
+
+    // Заголовки колонок
+    sctx.fillStyle = '#f0f0f0'; sctx.fillRect(col1X, tblTop, colW, 20);
+    sctx.fillRect(col2X, tblTop, colW, 20);
+    sctx.strokeStyle = '#999'; sctx.lineWidth = 0.5;
+    sctx.strokeRect(col1X, tblTop, colW, 20);
+    sctx.strokeRect(col2X, tblTop, colW, 20);
+    sctx.fillStyle = '#333'; sctx.font = 'bold 9px sans-serif';
+    sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
+    sctx.fillText(S.lang === 'en' ? 'Step / Bend / Angle' : 'Шаг / Гиб / Угол', col1X + colW / 2, tblTop + 10);
+    sctx.fillText(S.lang === 'en' ? 'Step / Bend / Angle' : 'Шаг / Гиб / Угол', col2X + colW / 2, tblTop + 10);
+
+    order.forEach((bendIdx, stepNum) => {
+      const col = stepNum % 2;
+      const row = Math.floor(stepNum / 2);
+      const cellX = col === 0 ? col1X : col2X;
+      const cellY = tblTop + 20 + row * rowH;
+      const cellH = rowH;
+
+      sctx.strokeStyle = '#ccc'; sctx.lineWidth = 0.5;
+      sctx.strokeRect(cellX, cellY, colW, cellH);
+
+      // Номер шага + гиб + угол
+      const bInfo = res.bendInfos[bendIdx];
+      const interior = bInfo ? ((Math.PI - bInfo.bendAngle) * 180 / Math.PI).toFixed(0) : '?';
+
+      sctx.fillStyle = '#f97316'; sctx.beginPath();
+      sctx.arc(cellX + 16, cellY + 16, 10, 0, Math.PI * 2); sctx.fill();
+      sctx.strokeStyle = '#fff'; sctx.lineWidth = 1; sctx.stroke();
+      sctx.fillStyle = '#fff'; sctx.font = 'bold 9px sans-serif';
+      sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
+      sctx.fillText(String(stepNum + 1), cellX + 16, cellY + 16);
+
+      sctx.fillStyle = '#333'; sctx.font = 'bold 10px sans-serif';
+      sctx.textAlign = 'left'; sctx.textBaseline = 'middle';
+      sctx.fillText(S.lang === 'en'
+        ? 'Bend ' + (bendIdx + 1) + '  ' + interior + '\u00b0'
+        : 'Гиб ' + (bendIdx + 1) + '  ' + interior + '\u00b0',
+        cellX + 32, cellY + 16);
+
+      // Миниатюра заготовки после этого шага
+      // Вычисляем согнутый контур для шагов 0..stepNum
+      const activeUpTo = order.slice(0, stepNum + 1);
+      const simPts = computeSimPointsForDrawing(activeUpTo, res, S.points);
+      if (simPts && simPts.length >= 2) {
+        // Находим bounds
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        simPts.forEach(p => {
+          if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        });
+        const rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+        const thumbAreaX = cellX + 8;
+        const thumbAreaY = cellY + 28;
+        const thumbAreaW = colW - 16;
+        const thumbAreaH = cellH - 32;
+        const tScale = Math.min(thumbAreaW / rangeX, thumbAreaH / rangeY);
+        const tOfsX = thumbAreaX + (thumbAreaW - rangeX * tScale) / 2;
+        const tOfsY = thumbAreaY + (thumbAreaH - rangeY * tScale) / 2;
+
+        sctx.strokeStyle = '#ea580c'; sctx.lineWidth = 1.5;
+        sctx.lineCap = 'round'; sctx.lineJoin = 'round';
+        sctx.beginPath();
+        sctx.moveTo(tOfsX + (simPts[0].x - minX) * tScale, tOfsY + (maxY - simPts[0].y) * tScale);
+        for (let i = 1; i < simPts.length; i++) {
+          sctx.lineTo(tOfsX + (simPts[i].x - minX) * tScale, tOfsY + (maxY - simPts[i].y) * tScale);
+        }
+        sctx.stroke();
+
+        // Точки
+        simPts.forEach(pt => {
+          sctx.beginPath();
+          sctx.arc(tOfsX + (pt.x - minX) * tScale, tOfsY + (maxY - pt.y) * tScale, 2, 0, Math.PI * 2);
+          sctx.fillStyle = '#f97316'; sctx.fill();
+        });
+      }
+    });
+
+    seqDataUrl = seqCv.toDataURL('image/png');
+    window._drawingCanvasSeq = seqCv;
+  }
+
   // Show dialog with preview
   const dataUrl = cv.toDataURL('image/png');
   let dh = '';
@@ -1426,7 +1602,13 @@ function generateDrawing() {
     dh += '</div></div>';
   }
   dh += '<h3 class="text-sm font-semibold flex items-center gap-2 mb-3"><svg class="h-4 w-4 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' + t('drawingTitle') + '</h3>';
-  dh += '<div style="max-height:85vh;overflow-y:auto;"><img src="' + dataUrl + '" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;"/></div>';
+  dh += '<div style="max-height:85vh;overflow-y:auto;">';
+  dh += '<img src="' + dataUrl + '" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;margin-bottom:8px;"/>';
+  if (seqDataUrl) {
+    dh += '<div class="text-[10px] text-gray-500 mb-1">' + (S.lang === 'en' ? 'Page 2: Bending Sequence' : 'Лист 2: Последовательность гибки') + '</div>';
+    dh += '<img src="' + seqDataUrl + '" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;"/>';
+  }
+  dh += '</div>';
   dh += '<div class="flex gap-2 mt-3">';
   dh += '<button onclick="downloadDrawing()" class="flex-1 text-xs h-9 px-3 bg-green-600 text-white rounded-md hover:bg-green-700 font-semibold flex items-center justify-center gap-1.5"><i data-lucide="download" class="h-3.5 w-3.5"></i>' + t('drawingDownload') + '</button>';
   dh += '<button onclick="printDrawing()" class="flex-1 text-xs h-9 px-3 border border-gray-200 dark:border-gray-700 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center gap-1.5"><i data-lucide="printer" class="h-3.5 w-3.5"></i>' + t('drawingPrint') + '</button>';
@@ -1439,23 +1621,49 @@ function generateDrawing() {
 function downloadDrawing() {
   const cv = window._drawingCanvas;
   if (!cv) return;
+  const seqCv = window._drawingCanvasSeq;
   const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  cv.toBlob(blob => {
-    if (!blob) return;
-    const u = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = u; a.download = 'drawing-' + ts + '.png';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(u);
-  }, 'image/png');
+  // Если есть второй лист — объединяем вертикально
+  if (seqCv) {
+    const combined = document.createElement('canvas');
+    combined.width = cv.width;
+    combined.height = cv.height + seqCv.height + 20;
+    const cctx = combined.getContext('2d');
+    cctx.fillStyle = '#fff'; cctx.fillRect(0, 0, combined.width, combined.height);
+    cctx.drawImage(cv, 0, 0);
+    cctx.drawImage(seqCv, 0, cv.height + 20);
+    combined.toBlob(blob => {
+      if (!blob) return;
+      const u = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = u; a.download = 'drawing-' + ts + '.png';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(u);
+    }, 'image/png');
+  } else {
+    cv.toBlob(blob => {
+      if (!blob) return;
+      const u = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = u; a.download = 'drawing-' + ts + '.png';
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a); URL.revokeObjectURL(u);
+    }, 'image/png');
+  }
 }
 
 function printDrawing() {
   const cv = window._drawingCanvas;
   if (!cv) return;
+  const seqCv = window._drawingCanvasSeq;
   const dataUrl = cv.toDataURL('image/png');
+  const seqDataUrl = seqCv ? seqCv.toDataURL('image/png') : null;
   const win = window.open('', '_blank');
   if (!win) { toast('Popup blocked', 'error'); return; }
-  win.document.write('<!DOCTYPE html><html><head><title>' + t('drawingTitle') + '</title><style>@page{margin:0;size:A4 landscape}@media print{body{margin:0;padding:0}}</style></head><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff;"><img src="' + dataUrl + '" style="max-width:100%;max-height:100vh;" onload="setTimeout(()=>window.print(),300)"/></body></html>');
+  let imgHtml = '<img src="' + dataUrl + '" style="max-width:100%;max-height:100vh;" onload="setTimeout(()=>window.print(),300)"/>';
+  if (seqDataUrl) {
+    imgHtml = '<img src="' + dataUrl + '" style="max-width:100%;max-height:48vh;"/><div style="page-break-after:always;"></div><img src="' + seqDataUrl + '" style="max-width:100%;max-height:100vh;" onload="setTimeout(()=>window.print(),300)"/>';
+  }
+  win.document.write('<!DOCTYPE html><html><head><title>' + t('drawingTitle') + '</title><style>@page{margin:0;size:A4 landscape}@media print{body{margin:0;padding:0}}</style></head><body style="margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background:#fff;">' + imgHtml + '</body></html>');
   win.document.close();
 }

@@ -365,6 +365,9 @@ function drawDrawCanvas() {
       sim.bendMarkers.forEach(m => {
         const c = w2c(m.x, m.y);
         const isActive = S.simBends.includes(m.index);
+        // Порядковый номер гиба (1-based) в последовательности кликов
+        const orderNum = S.simBends.indexOf(m.index);
+        const displayNum = isActive ? (orderNum + 1) : (m.index + 1);
         // Кольцо
         drawCtx.beginPath();
         drawCtx.arc(c.cx, c.cy, 10, 0, Math.PI * 2);
@@ -377,13 +380,13 @@ function drawDrawCanvas() {
           : (isDark ? '#3b82f6' : '#3b82f6');
         drawCtx.lineWidth = 2;
         drawCtx.stroke();
-        // Номер гиба
+        // Номер: активный — порядковый (зелёный), неактивный — номер вершины (синий)
         drawCtx.fillStyle = isActive
           ? (isDark ? '#22c55e' : '#16a34a')
           : (isDark ? '#93c5fd' : '#2563eb');
         drawCtx.font = 'bold 10px sans-serif';
         drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
-        drawCtx.fillText(String(m.index + 1), c.cx, c.cy);
+        drawCtx.fillText(String(displayNum), c.cx, c.cy);
       });
 
       // Подпись режима
@@ -399,6 +402,14 @@ function drawDrawCanvas() {
       drawCtx.fillText(S.lang === 'en'
         ? 'Bent: ' + activeCount + ' / ' + totalBends + ' — click again to unfold'
         : 'Согнуто: ' + activeCount + ' / ' + totalBends + ' — повторный клик разгибает', 10, 26);
+      if (S.simBends.length > 0) {
+        drawCtx.font = '9px sans-serif';
+        drawCtx.fillStyle = isDark ? '#22c55e' : '#16a34a';
+        const orderStr = S.simBends.map((idx, i) => (i + 1) + '\u2192\u0413' + (idx + 1)).join('  ');
+        drawCtx.fillText(S.lang === 'en'
+          ? 'Order: ' + S.simBends.map((idx, i) => (i + 1) + '\u2192B' + (idx + 1)).join('  ')
+          : 'Порядок: ' + orderStr, 10, 42);
+      }
     }
     // В режиме симуляции не рисуем обычный контур и размеры
     drawDrawCanvasSimDone = true;
@@ -2112,8 +2123,14 @@ drawCanvas.addEventListener('mousedown', e => {
         }
         if (best) {
           const i = S.simBends.indexOf(best.index);
-          if (i >= 0) S.simBends.splice(i, 1);
-          else S.simBends.push(best.index);
+          if (i >= 0) {
+            // Разгибаем — удаляем из последовательности
+            S.simBends.splice(i, 1);
+          } else {
+            // Сгибаем — добавляем в конец последовательности
+            S.simBends.push(best.index);
+          }
+          S.bendOrder = [...S.simBends]; // сохраняем порядок
           drawDrawCanvas();
           return;
         }
