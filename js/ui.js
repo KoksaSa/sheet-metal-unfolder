@@ -647,9 +647,9 @@ function renderSnapSettings() {
       '">' + (v === 'none' ? '\u2014' : v + '°') + '</button>';
   });
   h += '</div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('dimensionsOnCanvas') + '</label><div class="switch' + (S.showDimensions ? ' active' : '') + '" onclick="S.showDimensions=!S.showDimensions;drawDrawCanvas()"></div></div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="crosshair" class="h-3 w-3"></i>' + t('axisLabels') + '</label><div class="switch' + (S.showAxisLabels ? ' active' : '') + '" onclick="S.showAxisLabels=!S.showAxisLabels;drawDrawCanvas()"></div></div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.punchOffsetX=0;S.punchOffsetY=0;S.bendPointX=0;S.bendPointY=0;S.previewBendIdx=null;S.previewFlip=false;}drawDrawCanvas()"></div></div>';
+  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('dimensionsOnCanvas') + '</label><div class="switch' + (S.showDimensions ? ' active' : '') + '" onclick="S.showDimensions=!S.showDimensions;renderSnapSettings();drawDrawCanvas()"></div></div>';
+  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="crosshair" class="h-3 w-3"></i>' + t('axisLabels') + '</label><div class="switch' + (S.showAxisLabels ? ' active' : '') + '" onclick="S.showAxisLabels=!S.showAxisLabels;renderSnapSettings();drawDrawCanvas()"></div></div>';
+  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.punchOffsetX=0;S.punchOffsetY=0;S.bendPointX=0;S.bendPointY=0;S.previewBendIdx=null;S.previewFlip=false;}renderSnapSettings();drawDrawCanvas()"></div></div>';
   c.innerHTML = h;
 }
 
@@ -886,6 +886,28 @@ function renderUnfoldInfo() {
   h += '<div class="grid grid-cols-3 gap-x-2 mt-1.5 text-[9px]"><div><span class="text-gray-500 dark:text-gray-400">' + t('density') + '</span><p class="font-mono tabular-nums">' + density.toFixed(1) + ' ' + t('densityUnit') + '</p></div>';
   h += '<div><span class="text-gray-500 dark:text-gray-400">' + t('thickShort') + '</span><p class="font-mono tabular-nums">' + S.metal.thickness + ' mm</p></div>';
   h += '<div><span class="text-gray-500 dark:text-gray-400">R/K</span><p class="font-mono tabular-nums">' + S.metal.bendRadius + '/' + S.metal.kFactor.toFixed(2) + '</p></div></div></div>';
+  // Tools thumbnails + bend angles
+  h += '<div class="rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-600/50 p-2.5"><div class="flex items-center gap-2 mb-1.5"><div class="w-6 h-6 rounded-md bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center"><i data-lucide="hammer" class="h-3 w-3 text-blue-600 dark:text-blue-400"></i></div><p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">' + t('bendTool') + '</p></div>';
+  h += '<div class="grid grid-cols-2 gap-2">';
+  // Die thumbnail
+  h += '<div class="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1.5"><p class="text-[9px] text-gray-500 dark:text-gray-400 mb-1">' + t('dieSelect') + '</p><div class="h-12 flex items-center justify-center overflow-hidden">' + (die ? toolThumbSVG(die, 'die', 80, 44) : '<span class="text-[9px] text-gray-400">\u2014</span>') + '</div>';
+  if (die) h += '<p class="text-[9px] text-gray-500 dark:text-gray-400 mt-1 font-mono">' + toolSizeLabel(die, true) + '</p>';
+  h += '</div>';
+  // Punch thumbnail
+  h += '<div class="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-1.5"><p class="text-[9px] text-gray-500 dark:text-gray-400 mb-1">' + t('punchSelect') + '</p><div class="h-12 flex items-center justify-center overflow-hidden">' + (punch ? toolThumbSVG(punch, 'punch', 80, 44) : '<span class="text-[9px] text-gray-400">\u2014</span>') + '</div>';
+  if (punch) h += '<p class="text-[9px] text-gray-500 dark:text-gray-400 mt-1 font-mono">' + toolSizeLabel(punch, false) + '</p>';
+  h += '</div>';
+  h += '</div>';
+  // Bend angles
+  if (res.bendInfos && res.bendInfos.length > 0) {
+    h += '<div class="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700"><p class="text-[9px] text-gray-500 dark:text-gray-400 mb-1">' + t('bendWord1') + ' (' + res.bendInfos.length + ')</p><div class="flex flex-wrap gap-1">';
+    res.bendInfos.forEach((b, i) => {
+      const interior = (Math.PI - b.bendAngle) * 180 / Math.PI;
+      h += '<span class="text-[9px] px-1.5 py-0.5 rounded bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 font-mono tabular-nums border border-orange-200 dark:border-orange-800/50">' + (i + 1) + ': ' + interior.toFixed(0) + '\u00b0</span>';
+    });
+    h += '</div></div>';
+  }
+  h += '</div>';
   // Segments toggle
   h += '<button onclick="S.showSegments=!S.showSegments;renderUnfoldInfo()" class="w-full flex items-center justify-between text-[10px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 py-1"><span class="flex items-center gap-1"><i data-lucide="table-properties" class="h-3 w-3"></i>' + t('segmentsTitle') + '</span><span class="transition-transform duration-200 ' + (S.showSegments ? 'rotate-180' : '') + '">\u25bc</span></button>';
   if (S.showSegments) {
@@ -898,14 +920,12 @@ function renderUnfoldInfo() {
       const badBend = isBend && el.feasible === false;
       const len = isS ? el.length : (isHem ? el.length : el.bendAllowance);
       cum += len;
-      const isShort = isS && len > 0 && len < minFlange;
+      const isShort = false;
       let rowBg = isS ? '' : (isHem ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'bg-orange-50/50 dark:bg-orange-950/20');
       if (badBend) rowBg = 'bg-red-50/70 dark:bg-red-950/40';
-      if (isShort) rowBg += ' bg-red-50/50 dark:bg-red-950/30';
       h += '<tr class="border-b hover:bg-gray-50 dark:hover:bg-gray-700/50 ' + rowBg + '"><td class="px-2 py-1 text-gray-500 font-mono">' + (i + 1) + '</td>';
       h += '<td class="px-2 py-1"><span class="' + (isS ? 'text-green-700 dark:text-green-400' : (isHem ? 'text-blue-600 dark:text-blue-400' : badBend ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-orange-600 dark:text-orange-400 font-medium')) + '">' + (isS ? t('segStraight') : (isHem ? t('hem') + (el.edge === 'bottom' ? '↓' : '↑') : (badBend ? '\u26a0 ' : '') + t('segBend'))) + '</span>';
       if (!isS && !isHem) h += '<span class="ml-1 font-mono ' + (badBend ? 'text-red-500' : 'text-orange-500') + '">' + ((el.angle * 180 / Math.PI).toFixed(0)) + '°</span>';
-      if (isShort) h += '<span class="ml-1 text-red-500" title="' + t('minFlangeWarning') + minFlange.toFixed(1) + ' mm">\u26a0</span>';
       h += '</td><td class="px-2 py-1 text-right font-mono tabular-nums">' + len.toFixed(2) + '</td><td class="px-2 py-1 text-right font-mono tabular-nums text-gray-500 hidden lg:table-cell">' + cum.toFixed(1) + '</td></tr>';
     });
     h += '<tfoot><tr class="border-t bg-gray-100 dark:bg-gray-700/20 font-semibold"><td colspan="2" class="px-2 py-1 text-gray-500">' + t('total') + '</td><td class="px-2 py-1 text-right font-mono tabular-nums">' + res.totalLength.toFixed(2) + '</td><td class="px-2 py-1 text-right font-mono tabular-nums text-gray-500 hidden lg:table-cell">' + res.totalLength.toFixed(1) + '</td></tr></tfoot></table></div>';
@@ -960,7 +980,7 @@ function generateDrawing() {
   const CW = 297 * pxPerMm;
   const CH = 210 * pxPerMm;
   const border = 10 * pxPerMm;
-  const titleH = 45 * pxPerMm;
+  const titleH = 55 * pxPerMm;
 
   const cv = document.createElement('canvas');
   cv.width = CW; cv.height = CH;
@@ -1250,7 +1270,7 @@ function generateDrawing() {
   ctx.fillText(t('thickness') + ': ' + S.metal.thickness + ' mm', border + 10, ty); ty += lh;
   ctx.fillText('R: ' + S.metal.bendRadius + ' mm  |  K: ' + S.metal.kFactor.toFixed(2), border + 10, ty); ty += lh;
   ctx.fillText(t('bendWord1') + ': ' + res.bendInfos.length + '  |  L: ' + L.toFixed(1) + ' mm  |  W: ' + W.toFixed(1) + ' mm', border + 10, ty); ty += lh;
-  ctx.fillText(t('dieSelect') + ': ' + (S.lang === 'en' ? die.nameEn : die.nameRu) + '  |  ' + t('punchSelect') + ': ' + (S.lang === 'en' ? punch.nameEn : punch.nameRu), border + 10, ty);
+  ctx.fillText(t('dieSelect') + ': ' + (die ? (S.lang === 'en' ? die.nameEn : die.nameRu) : '\u2014') + '  |  ' + t('punchSelect') + ': ' + (punch ? (S.lang === 'en' ? punch.nameEn : punch.nameRu) : '\u2014'), border + 10, ty);
 
   ctx.textAlign = 'right'; ty = tbTop + 8;
   ctx.font = 'bold 10px sans-serif';
@@ -1260,13 +1280,126 @@ function generateDrawing() {
   ctx.fillText(t('density') + ': ' + density.toFixed(1) + ' ' + t('densityUnit'), CW - border - 10, ty); ty += lh;
   ctx.fillText(dateStr, CW - border - 10, ty);
 
+  // === TOOLS MINIATURES + BEND ANGLES ===
+  // Рисуем те же миниатюры, что в боковой панели (toolThumbSVG / drawProfileSVG),
+  // но на canvas чертежа.
+  const toolsTop = tbTop + 105;
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(border + 10, toolsTop); ctx.lineTo(CW - border - 10, toolsTop); ctx.stroke();
+
+  // Функция отрисовки профиля инструмента на canvas (аналог drawProfileSVG)
+  function drawToolProfileOnCanvas(tool, kind, ox, oy, ow, oh) {
+    const color = kind === 'punch' ? '#ef4444' : '#3b82f6';
+    const pad = 3;
+    // Кастомный инструмент с профилем
+    let chains = null, minX = 0, minY = 0, pw = 0, ph = 0;
+    if (tool.isCustom && tool.profile && tool.profile.chains && tool.profile.chains.length) {
+      chains = tool.profile.chains;
+      minX = tool.profile.minX || 0; minY = tool.profile.minY || 0;
+      pw = tool.profile.width; ph = tool.profile.height;
+    } else if (tool.isCustom && Array.isArray(tool.profile) && tool.profile.length) {
+      chains = [tool.profile];
+      minX = Math.min(...tool.profile.map(p => p.x));
+      minY = Math.min(...tool.profile.map(p => p.y));
+      const maxX = Math.max(...tool.profile.map(p => p.x));
+      const maxY = Math.max(...tool.profile.map(p => p.y));
+      pw = maxX - minX; ph = maxY - minY;
+    }
+    if (chains && pw > 0 && ph > 0) {
+      const usableW = ow - pad * 2, usableH = oh - pad * 2;
+      const scale = Math.min(usableW / pw, usableH / ph) || 1;
+      const offX = ox + pad + (usableW - pw * scale) / 2;
+      const offY = oy + pad + (usableH - ph * scale) / 2;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      chains.forEach(chain => {
+        ctx.beginPath();
+        chain.forEach((p, pi) => {
+          const sx = offX + (p.x - minX) * scale;
+          const sy = offY + (ph - (p.y - minY)) * scale;
+          if (pi === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        });
+        ctx.stroke();
+      });
+      return;
+    }
+    // Стандартный / без профиля — схематично (как toolThumbSVG)
+    const usableW = ow - pad * 2, usableH = oh - pad * 2;
+    if (kind === 'punch') {
+      const r = (tool.radius || 1) * 0.5;
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(ox + pad, oy + oh - pad);
+      ctx.lineTo(ox + pad, oy + oh - pad - usableH * 0.5);
+      ctx.arc(ox + ow / 2, oy + oh - pad - usableH * 0.5, r, Math.PI, 0, false);
+      ctx.lineTo(ox + ow - pad, oy + oh - pad);
+      ctx.stroke();
+    } else {
+      const mid = ox + ow / 2;
+      const depth = Math.min(usableH * 0.9, (tool.vWidth || 10) * 0.45);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(ox + pad, oy + oh - pad);
+      ctx.lineTo(ox + pad, oy + oh - pad - usableH * 0.5);
+      ctx.lineTo(mid, oy + oh - pad - depth);
+      ctx.lineTo(ox + ow - pad, oy + oh - pad - usableH * 0.5);
+      ctx.lineTo(ox + ow - pad, oy + oh - pad);
+      ctx.stroke();
+    }
+  }
+
+  // Die miniature (left)
+  const dieX = border + 15;
+  const dieY = toolsTop + 8;
+  ctx.fillStyle = '#000'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(t('dieSelect'), dieX, dieY);
+  if (die) {
+    drawToolProfileOnCanvas(die, 'die', dieX, dieY + 12, 60, 28);
+    ctx.fillStyle = '#555'; ctx.font = '7px monospace';
+    ctx.fillText(toolSizeLabel(die, true), dieX, dieY + 42);
+  }
+
+  // Punch miniature (next to die)
+  const punchX = dieX + 80;
+  ctx.fillStyle = '#000'; ctx.font = '8px sans-serif';
+  ctx.fillText(t('punchSelect'), punchX, dieY);
+  if (punch) {
+    drawToolProfileOnCanvas(punch, 'punch', punchX, dieY + 12, 60, 28);
+    ctx.fillStyle = '#555'; ctx.font = '7px monospace';
+    ctx.fillText(toolSizeLabel(punch, false), punchX, dieY + 42);
+  }
+
+  // Bend angles (right side)
+  const bendsX = CW - border - 10;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#000'; ctx.font = '8px sans-serif';
+  ctx.fillText(t('bendWord1') + ' (' + res.bendInfos.length + '):', bendsX, toolsTop + 8);
+  if (res.bendInfos && res.bendInfos.length > 0) {
+    ctx.font = 'bold 8px monospace';
+    let bx = bendsX;
+    const by = toolsTop + 22;
+    // Draw angles right-to-left
+    for (let i = res.bendInfos.length - 1; i >= 0; i--) {
+      const b = res.bendInfos[i];
+      const interior = (Math.PI - b.bendAngle) * 180 / Math.PI;
+      const txt = (i + 1) + ':' + interior.toFixed(0) + '\u00b0';
+      const tw = ctx.measureText(txt).width;
+      ctx.fillStyle = '#fed7aa';
+      ctx.fillRect(bx - tw - 4, by - 1, tw + 4, 12);
+      ctx.strokeStyle = '#ea580c55'; ctx.lineWidth = 0.5;
+      ctx.strokeRect(bx - tw - 4, by - 1, tw + 4, 12);
+      ctx.fillStyle = '#c2410c'; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.fillText(txt, bx, by + 1);
+      bx -= tw + 6;
+    }
+  }
+
   // Show dialog with preview
   const dataUrl = cv.toDataURL('image/png');
   let dh = '';
   // Предупреждение о невозможных гибах
   if (badBends.length > 0) {
-    const dieName = S.lang === 'en' ? die.nameEn : die.nameRu;
-    const punchName = S.lang === 'en' ? punch.nameEn : punch.nameRu;
+    const dieName = die ? (S.lang === 'en' ? die.nameEn : die.nameRu) : '\u2014';
+    const punchName = punch ? (S.lang === 'en' ? punch.nameEn : punch.nameRu) : '\u2014';
     dh += '<div class="mb-3 rounded-lg border-2 border-red-500/50 bg-red-50 dark:bg-red-950/30 p-3">';
     dh += '<p class="text-xs font-semibold text-red-700 dark:text-red-400 flex items-center gap-1.5 mb-1"><i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>' + t('bendWarningsTitle') + ' — ' + dieName + ' / ' + punchName + '</p>';
     dh += '<div class="space-y-1">';
