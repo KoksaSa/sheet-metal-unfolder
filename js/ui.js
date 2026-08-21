@@ -1043,6 +1043,12 @@ function generateDrawing() {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
 
+  // Карта порядка гибки: bendIndex → порядковый номер шага (1-based)
+  // Если симуляция не проводилась — естественный порядок (1, 2, 3...)
+  const bendOrder = (S.bendOrder && S.bendOrder.length > 0) ? S.bendOrder : (res.bendInfos || []).map((b, i) => i);
+  const bendStepMap = {}; // bendIndex → step number
+  bendOrder.forEach((bendIdx, stepNum) => { bendStepMap[bendIdx] = stepNum + 1; });
+
   // A4 landscape: 297x210mm, 3px/mm
   const pxPerMm = 3;
   const CW = 297 * pxPerMm;
@@ -1111,9 +1117,9 @@ function generateDrawing() {
     }
     ctx.stroke();
 
-    // Build bend number map: vertexIndex -> bendNumber (1-indexed)
+    // Build bend number map: vertexIndex -> step number (from simulation order)
     const bendNumMap = {};
-    if (res.bendInfos) res.bendInfos.forEach((b, idx) => { bendNumMap[b.vertexIndex] = idx + 1; });
+    if (res.bendInfos) res.bendInfos.forEach((b, idx) => { bendNumMap[b.vertexIndex] = bendStepMap[idx] || (idx + 1); });
 
     S.points.forEach((p, i) => {
       const pp = p2d(p.x, p.y);
@@ -1275,7 +1281,7 @@ function generateDrawing() {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(idx + 1), nx, ny);
+    ctx.fillText(String(bendStepMap[idx] || (idx + 1)), nx, ny);
     ctx.setLineDash([4, 3]);
   });
   ctx.setLineDash([]);
@@ -1463,8 +1469,7 @@ function generateDrawing() {
 
   // === SECOND PAGE: BENDING SEQUENCE ===
   let seqDataUrl = null;
-  const order = (S.bendOrder && S.bendOrder.length > 0) ? S.bendOrder : res.bendInfos.map((b, i) => i);
-  if (order.length > 0 && res.bendInfos.length > 0) {
+  if (bendOrder.length > 0 && res.bendInfos.length > 0) {
     const seqCv = document.createElement('canvas');
     seqCv.width = CW; seqCv.height = CH;
     const sctx = seqCv.getContext('2d');
@@ -1486,7 +1491,7 @@ function generateDrawing() {
     const colW = (CW - border * 2 - 20) / 2;
     const col1X = border + 10;
     const col2X = col1X + colW + 10;
-    const rowH = Math.min(tblH / Math.ceil(order.length / 2), 80);
+    const rowH = Math.min(tblH / Math.ceil(bendOrder.length / 2), 80);
 
     // Заголовки колонок
     sctx.fillStyle = '#f0f0f0'; sctx.fillRect(col1X, tblTop, colW, 20);
@@ -1499,7 +1504,7 @@ function generateDrawing() {
     sctx.fillText(S.lang === 'en' ? 'Step / Bend / Angle' : 'Шаг / Гиб / Угол', col1X + colW / 2, tblTop + 10);
     sctx.fillText(S.lang === 'en' ? 'Step / Bend / Angle' : 'Шаг / Гиб / Угол', col2X + colW / 2, tblTop + 10);
 
-    order.forEach((bendIdx, stepNum) => {
+    bendOrder.forEach((bendIdx, stepNum) => {
       const col = stepNum % 2;
       const row = Math.floor(stepNum / 2);
       const cellX = col === 0 ? col1X : col2X;
@@ -1523,13 +1528,13 @@ function generateDrawing() {
       sctx.fillStyle = '#333'; sctx.font = 'bold 10px sans-serif';
       sctx.textAlign = 'left'; sctx.textBaseline = 'middle';
       sctx.fillText(S.lang === 'en'
-        ? 'Bend ' + (bendIdx + 1) + '  ' + interior + '\u00b0'
-        : 'Гиб ' + (bendIdx + 1) + '  ' + interior + '\u00b0',
+        ? 'B' + (bendIdx + 1) + '  ' + interior + '\u00b0'
+        : 'Г' + (bendIdx + 1) + '  ' + interior + '\u00b0',
         cellX + 32, cellY + 16);
 
       // Миниатюра заготовки после этого шага
       // Вычисляем согнутый контур для шагов 0..stepNum
-      const activeUpTo = order.slice(0, stepNum + 1);
+      const activeUpTo = bendOrder.slice(0, stepNum + 1);
       const simPts = computeSimPointsForDrawing(activeUpTo, res, S.points);
       if (simPts && simPts.length >= 2) {
         // Находим bounds
