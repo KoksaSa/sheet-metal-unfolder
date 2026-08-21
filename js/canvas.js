@@ -1141,9 +1141,10 @@ function findDieGrooveCenter(profile) {
 function drawToolsOnCanvas(isDark) {
   const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
   const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
-  if (!die || !punch) return;
+  if (!die && !punch) return;
 
   // === Матрица ===
+  if (die) {
   drawCtx.strokeStyle = isDark ? '#3b82f6aa' : '#3b82f6cc';
   drawCtx.fillStyle = isDark ? '#3b82f618' : '#3b82f615';
   drawCtx.lineWidth = 1.5;
@@ -1201,8 +1202,10 @@ function drawToolsOnCanvas(isDark) {
   drawCtx.font = '9px sans-serif';
   drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
   drawCtx.fillText((S.lang === 'en' ? die.nameEn : die.nameRu) || 'Die', dl.cx, dl.cy - 3);
+  } // end if (die)
 
   // === Пуансон ===
+  if (punch) {
   const pOX = S.punchOffsetX || 0;
   const pOY = S.punchOffsetY || 0;
   drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
@@ -1265,6 +1268,7 @@ function drawToolsOnCanvas(isDark) {
   drawCtx.fillText((S.lang === 'en' ? punch.nameEn : punch.nameRu) || 'Punch', pl.cx, pl.cy + 3);
 
   // Осевая линия ручья (пунктир)
+  const dH = die ? die.height : (pH * 0.6);
   drawCtx.strokeStyle = isDark ? '#88888888' : '#88888866';
   drawCtx.lineWidth = 1;
   drawCtx.setLineDash([4, 3]);
@@ -1283,6 +1287,7 @@ function drawToolsOnCanvas(isDark) {
     drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
     drawCtx.fillText('Δ ' + pOX.toFixed(1) + ', ' + pOY.toFixed(1) + ' mm', offPt.cx, offPt.cy + 12);
   }
+  } // end if (punch)
 }
 
 // ==================== UNFOLD CANVAS ====================

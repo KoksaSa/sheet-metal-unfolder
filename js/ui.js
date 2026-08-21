@@ -269,6 +269,8 @@ function applyCustomTool() {
         maxAngle: maxAngle,
         profile
       });
+      // Выбираем только что добавленную матрицу
+      S.metal.dieIndex = loadCustomTools().customDies.length - 1;
     } else {
       const swidth = numVal('tool-swidth', Math.round(profile.width));
       const height = numVal('tool-height', Math.round(profile.height));
@@ -283,6 +285,8 @@ function applyCustomTool() {
         maxAngle: maxAngle,
         profile
       });
+      // Выбираем только что добавленный пуансон
+      S.metal.punchIndex = loadCustomTools().customPunches.length - 1;
     }
     closeDialog();
     doUnfold();
