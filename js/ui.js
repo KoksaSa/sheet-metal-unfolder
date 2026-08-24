@@ -649,7 +649,7 @@ function renderSnapSettings() {
       '">' + (v === 'none' ? '\u2014' : v + '°') + '</button>';
   });
   h += '</div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.punchOffsetX=0;S.punchOffsetY=0;S.dieOffsetX=0;S.dieOffsetY=0;S.bendPointX=0;S.bendPointY=0;S.previewBendIdx=null;S.previewFlip=false;}renderSnapSettings();drawDrawCanvas()"></div></div>';
+  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.previewBendIdx=null;S.previewFlip=false;}renderSnapSettings();drawDrawCanvas()"></div></div>';
   c.innerHTML = h;
 }
 
