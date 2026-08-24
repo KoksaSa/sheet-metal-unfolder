@@ -1720,7 +1720,8 @@ function project3D(x, y, z, useFull = false) {
   
   return {
     x: w / 2 + x1 * scale,
-    y: h / 2 - y2 * scale
+    y: h / 2 - y2 * scale,
+    z: z2 // глубина после поворота (больше = дальше от камеры)
   };
 }
 
@@ -1788,72 +1789,72 @@ function draw3DProfile3D(useFull = false) {
     pts.push(corners.map(c => project3D(c.x, c.y, c.z, useFull)));
   }
   
-  // Рисуем сегменты
+  // Рисуем сегменты — собираем все грани, сортируем по глубине (painter's algorithm)
+  const faces = [];
   for (let i = 0; i < S.points.length - 1; i++) {
     const p0 = pts[i];
     const p1 = pts[i + 1];
     
-    // Верхняя грань
-    ctx.beginPath();
-    ctx.moveTo(p0[2].x, p0[2].y);
-    ctx.lineTo(p0[3].x, p0[3].y);
-    ctx.lineTo(p1[3].x, p1[3].y);
-    ctx.lineTo(p1[2].x, p1[2].y);
-    ctx.closePath();
-    ctx.fillStyle = isDark ? '#4ade80' : '#22c55e';
-    ctx.fill();
-    ctx.strokeStyle = isDark ? '#86efac' : '#16a34a';
-    ctx.lineWidth = useFull ? 1 : 0.5;
-    ctx.stroke();
-    
-    // Передняя грань
-    ctx.beginPath();
-    ctx.moveTo(p0[1].x, p0[1].y);
-    ctx.lineTo(p0[3].x, p0[3].y);
-    ctx.lineTo(p1[3].x, p1[3].y);
-    ctx.lineTo(p1[1].x, p1[1].y);
-    ctx.closePath();
-    ctx.fillStyle = isDark ? '#22c55e' : '#16a34a';
-    ctx.fill();
-    ctx.strokeStyle = isDark ? '#86efac' : '#16a34a';
-    ctx.lineWidth = useFull ? 1 : 0.5;
-    ctx.stroke();
-    
-    // Задняя грань
-    ctx.beginPath();
-    ctx.moveTo(p0[0].x, p0[0].y);
-    ctx.lineTo(p0[2].x, p0[2].y);
-    ctx.lineTo(p1[2].x, p1[2].y);
-    ctx.lineTo(p1[0].x, p1[0].y);
-    ctx.closePath();
-    ctx.fillStyle = isDark ? '#15803d' : '#15803d';
-    ctx.fill();
-    ctx.strokeStyle = isDark ? '#4ade80' : '#16a34a';
-    ctx.lineWidth = useFull ? 1 : 0.5;
-    ctx.stroke();
-    
-    // Линии гибов
-    if (i > 0 && i < S.points.length - 2) {
-      if (isBendAtPoint(i)) {
-        ctx.beginPath();
-        ctx.moveTo(p0[2].x, p0[2].y);
-        ctx.lineTo(p0[3].x, p0[3].y);
-        ctx.strokeStyle = isDark ? '#fbbf24' : '#f59e0b';
-        ctx.lineWidth = useFull ? 2 : 1.5;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        
-        const midX = (p0[2].x + p0[3].x) / 2;
-        const midY = (p0[2].y + p0[3].y) / 2 - (useFull ? 8 : 5);
-        ctx.fillStyle = isDark ? '#fbbf24' : '#f59e0b';
-        ctx.font = (useFull ? 'bold 10px' : 'bold 8px') + ' sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText((i + 1), midX, midY);
-      }
-    }
+    // Верхняя грань (indices 2,3 — верхняя кромка)
+    faces.push({
+      pts: [p0[2], p0[3], p1[3], p1[2]],
+      z: (p0[2].z + p0[3].z + p1[3].z + p1[2].z) / 4,
+      fill: isDark ? '#4ade80' : '#22c55e',
+      stroke: isDark ? '#86efac' : '#16a34a',
+      isBend: i > 0 && i < S.points.length - 2 && isBendAtPoint(i),
+      bendNum: i + 1
+    });
+    // Передняя грань (z=+hw, indices 1,3)
+    faces.push({
+      pts: [p0[1], p0[3], p1[3], p1[1]],
+      z: (p0[1].z + p0[3].z + p1[3].z + p1[1].z) / 4,
+      fill: isDark ? '#22c55e' : '#16a34a',
+      stroke: isDark ? '#86efac' : '#16a34a'
+    });
+    // Задняя грань (z=-hw, indices 0,2)
+    faces.push({
+      pts: [p0[0], p0[2], p1[2], p1[0]],
+      z: (p0[0].z + p0[2].z + p1[2].z + p1[0].z) / 4,
+      fill: isDark ? '#15803d' : '#15803d',
+      stroke: isDark ? '#4ade80' : '#16a34a'
+    });
   }
+  
+  // Сортируем: дальние (большая z) — первыми
+  faces.sort((a, b) => b.z - a.z);
+  
+  // Рисуем грани в порядке глубины
+  faces.forEach(f => {
+    ctx.beginPath();
+    ctx.moveTo(f.pts[0].x, f.pts[0].y);
+    for (let k = 1; k < f.pts.length; k++) ctx.lineTo(f.pts[k].x, f.pts[k].y);
+    ctx.closePath();
+    ctx.fillStyle = f.fill;
+    ctx.fill();
+    ctx.strokeStyle = f.stroke;
+    ctx.lineWidth = useFull ? 1 : 0.5;
+    ctx.stroke();
+    
+    // Линии гибов на верхней грани
+    if (f.isBend) {
+      const a = f.pts[0], b = f.pts[1];
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = isDark ? '#fbbf24' : '#f59e0b';
+      ctx.lineWidth = useFull ? 2 : 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2 - (useFull ? 8 : 5);
+      ctx.fillStyle = isDark ? '#fbbf24' : '#f59e0b';
+      ctx.font = (useFull ? 'bold 10px' : 'bold 8px') + ' sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(f.bendNum), midX, midY);
+    }
+  });
 
   // Hem 3D hooks — visual "hook" geometry
   drawHemHooks3D(ctx, pts, useFull, isDark);

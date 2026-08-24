@@ -59,6 +59,23 @@ input[type=range]::-webkit-slider-thumb {
   background: #22c55e; border-color: #1a1a2e;
 }
 
+/* ==================== FORM CONTROLS (dark theme fix) ==================== */
+.dark input[type=text],
+.dark input[type=number],
+.dark select,
+.dark textarea {
+  color: #f3f4f6 !important;
+}
+.dark input[type=text]::placeholder,
+.dark input[type=number]::placeholder,
+.dark textarea::placeholder {
+  color: #9ca3af !important;
+}
+.dark option {
+  background: #1f2937;
+  color: #f3f4f6;
+}
+
 /* ==================== TOAST ==================== */
 .toast {
   position: fixed; bottom: 20px; right: 20px; z-index: 9999;
