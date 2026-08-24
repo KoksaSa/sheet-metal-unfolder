@@ -1095,8 +1095,10 @@ function computeSimPoints() {
         });
       }
     }
-    // Сдвиг вершины якоря в (0,0)
-    const dx = -anchor.x, dy = -anchor.y;
+    // Сдвиг вершины якоря в точку гиба на пуансоне
+    const bpX = S.bendPointX || 0;
+    const bpY = S.bendPointY || 0;
+    const dx = bpX - anchor.x, dy = bpY - anchor.y;
     out.forEach(p => { p.x += dx; p.y += dy; });
     bendMarkers.forEach(m => { m.x += dx; m.y += dy; });
   }

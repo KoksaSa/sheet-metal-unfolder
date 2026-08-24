@@ -1,14 +1,14 @@
 // ==================== STATE ====================
 const S = {
   points: [],
-  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 100, partNumber: '', dieIndex: 0, punchIndex: 0 },
+  metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 600, partNumber: '', dieIndex: 0, punchIndex: 0 },
   hems: [], // [{segIndex, height, side:'left'|'right'}]
   hemEditing: null, // {segIndex} when hem dialog is open
   hemHoveredSeg: -1,
   toolMode: 'draw',
   lang: localStorage.getItem('sheet-metal-lang') || 'ru',
   snapToGrid: true,
-  gridSize: 10,
+  gridSize: 5,
   angleSnap: 'none',
   showDimensions: true,
   showAxisLabels: true,
