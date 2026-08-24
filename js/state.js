@@ -18,6 +18,8 @@ const S = {
   bendOrder: [], // порядок гибки: массив индексов гибов в порядке кликов
   punchOffsetX: 0,
   punchOffsetY: 0,
+  dieOffsetX: 0,
+  dieOffsetY: 0,
   bendPointX: 0,
   bendPointY: 0,
   previewBendIdx: null,

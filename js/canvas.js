@@ -8,6 +8,7 @@ const drawCtx = drawCanvas.getContext('2d');
 let canvasW = 400, canvasH = 300;
 let isPanning = false, panStart = null, dragPtIdx = null;
 let dragPunch = false;
+let dragDie = false;
 let dragBendPoint = false;
 let measureStart = null, measureEnd = null, measureStep = 0;
 let animFrame = 0;
@@ -1145,17 +1146,17 @@ function drawToolsOnCanvas(isDark) {
 
   // === Матрица ===
   if (die) {
+  const dOX = S.dieOffsetX || 0;
+  const dOY = S.dieOffsetY || 0;
   drawCtx.strokeStyle = isDark ? '#3b82f6aa' : '#3b82f6cc';
   drawCtx.fillStyle = isDark ? '#3b82f618' : '#3b82f615';
   drawCtx.lineWidth = 1.5;
 
   if (die.profile && die.profile.chains) {
     // Кастомная матрица — рисуем реальный DXF-профиль
-    // Центр V-ручья на (0,0), верхняя грань на оси X (Y=0), тело вниз (Y-)
-    // Находим центр V-ручья по зазору на верхней грани
     const vCenter = findDieGrooveCenter(die.profile);
-    const offX = -vCenter;
-    const offY = -(die.profile.minY + die.profile.height);
+    const offX = -vCenter + dOX;
+    const offY = -(die.profile.minY + die.profile.height) + dOY;
     die.profile.chains.forEach(chain => {
       drawCtx.beginPath();
       chain.forEach((p, pi) => {
@@ -1174,7 +1175,7 @@ function drawToolsOnCanvas(isDark) {
     const sw = die.swidth || vW * 2;
     const halfS = sw / 2;
     const depth = dH * 0.5;
-    const p = (x, y) => w2c(x, y);
+    const p = (x, y) => w2c(x + dOX, y + dOY);
     drawCtx.beginPath();
     let q = p(-halfS, 0);
     drawCtx.moveTo(q.cx, q.cy);
@@ -1197,11 +1198,19 @@ function drawToolsOnCanvas(isDark) {
 
   // Подпись матрицы
   const dH = die.height;
-  const dl = w2c(0, -dH);
+  const dl = w2c(dOX, -dH + dOY);
   drawCtx.fillStyle = isDark ? '#6085f0' : '#2563eb';
   drawCtx.font = '9px sans-serif';
   drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
   drawCtx.fillText((S.lang === 'en' ? die.nameEn : die.nameRu) || 'Die', dl.cx, dl.cy - 3);
+  // Индикатор смещения матрицы
+  if (Math.abs(dOX) > 0.01 || Math.abs(dOY) > 0.01) {
+    const offPt = w2c(dOX, dOY);
+    drawCtx.fillStyle = isDark ? '#6085f0' : '#2563eb';
+    drawCtx.font = '9px sans-serif';
+    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
+    drawCtx.fillText('Δ ' + dOX.toFixed(1) + ', ' + dOY.toFixed(1) + ' mm', offPt.cx, offPt.cy + 12);
+  }
   } // end if (die)
 
   // === Пуансон ===
@@ -2058,6 +2067,23 @@ function isNearPunch(cx, cy) {
   return cx >= minX - 8 && cx <= maxX + 8 && cy >= minY - 8 && cy <= maxY + 8;
 }
 
+// Проверка клика по матрице (когда инструменты показаны на канвас)
+function isNearDie(cx, cy) {
+  if (!S.showToolsOnCanvas) return false;
+  const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
+  if (!die) return false;
+  const dOX = S.dieOffsetX || 0;
+  const dOY = S.dieOffsetY || 0;
+  const dH = die.height || 40;
+  const sw = die.swidth || (die.vWidth ? die.vWidth * 2 : 40);
+  const halfW = (sw / 2) * S.viewport.scale;
+  const top = w2c(dOX, dOY);
+  const bot = w2c(dOX, -dH + dOY);
+  const minX = top.cx - halfW, maxX = top.cx + halfW;
+  const minY = Math.min(top.cy, bot.cy), maxY = Math.max(top.cy, bot.cy);
+  return cx >= minX - 8 && cx <= maxX + 8 && cy >= minY - 8 && cy <= maxY + 8;
+}
+
 /**
  * Найти hit area по координатам мыши
  */
@@ -2148,6 +2174,12 @@ drawCanvas.addEventListener('mousedown', e => {
     // Проверяем клик по точке сгибания (перетаскивание)
     if (isNearBendPoint(cx, cy)) {
       dragBendPoint = true;
+      drawCanvas.style.cursor = 'grabbing';
+      return;
+    }
+    // Проверяем клик по матрице (перетаскивание)
+    if (isNearDie(cx, cy)) {
+      dragDie = true;
       drawCanvas.style.cursor = 'grabbing';
       return;
     }
@@ -2254,6 +2286,15 @@ drawCanvas.addEventListener('mousemove', e => {
     return;
   }
 
+  if (dragDie) {
+    const w = c2w(cx, cy);
+    const p = S.snapToGrid ? snapPoint(w) : w;
+    S.dieOffsetX = p.x;
+    S.dieOffsetY = p.y;
+    drawDrawCanvas();
+    return;
+  }
+
   if (dragPunch) {
     const w = c2w(cx, cy);
     const p = S.snapToGrid ? snapPoint(w) : w;
@@ -2294,7 +2335,7 @@ drawCanvas.addEventListener('mousemove', e => {
 
   // Cursor
   if (S.toolMode === 'draw') drawCanvas.style.cursor = 'crosshair';
-  else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy) || isNearBendPoint(cx, cy)) ? 'grab' : 'default';
+  else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy) || isNearDie(cx, cy) || isNearBendPoint(cx, cy)) ? 'grab' : 'default';
   else if (S.toolMode === 'erase') drawCanvas.style.cursor = S.hoveredPt !== null ? 'pointer' : 'default';
   else if (S.toolMode === 'measure') drawCanvas.style.cursor = 'crosshair';
   else if (S.toolMode === 'hem') drawCanvas.style.cursor = S.hemHoveredSeg >= 0 ? 'pointer' : 'default';
@@ -2317,6 +2358,11 @@ drawCanvas.addEventListener('mouseup', e => {
     drawCanvas.style.cursor = 'default';
     drawDrawCanvas();
   }
+  if (dragDie) {
+    dragDie = false;
+    drawCanvas.style.cursor = 'default';
+    drawDrawCanvas();
+  }
   if (dragBendPoint) {
     dragBendPoint = false;
     drawCanvas.style.cursor = 'default';
@@ -2329,6 +2375,7 @@ drawCanvas.addEventListener('mouseleave', () => {
   isPanning = false;
   panStart = null;
   dragPunch = false;
+  dragDie = false;
   dragBendPoint = false;
   S.hoveredPt = -1;
   S.snapEndpoint = -1;
