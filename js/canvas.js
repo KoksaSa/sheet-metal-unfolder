@@ -868,6 +868,25 @@ function drawDrawCanvas() {
   // ==================== TOOL OVERLAY (1:1 scale) ====================
   if (S.showToolsOnCanvas) {
     drawToolsOnCanvas(isDark);
+
+    // === Точка сгибания (перетаскиваемая, всегда видна при инструментах) ===
+    const bp = w2c(S.bendPointX || 0, S.bendPointY || 0);
+    drawCtx.beginPath();
+    drawCtx.arc(bp.cx, bp.cy, 9, 0, Math.PI * 2);
+    drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
+    drawCtx.fill();
+    drawCtx.strokeStyle = '#ffffff';
+    drawCtx.lineWidth = 2;
+    drawCtx.stroke();
+    drawCtx.beginPath();
+    drawCtx.arc(bp.cx, bp.cy, 3, 0, Math.PI * 2);
+    drawCtx.fillStyle = '#ffffff';
+    drawCtx.fill();
+    // Подпись
+    drawCtx.fillStyle = isDark ? '#fbbf24' : '#d97706';
+    drawCtx.font = '8px sans-serif';
+    drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+    drawCtx.fillText(S.lang === 'en' ? 'Bend point' : 'Точка гиба', bp.cx, bp.cy - 12);
   }
 
   // ==================== FOLDED PREVIEW ====================
@@ -935,20 +954,6 @@ function drawDrawCanvas() {
         const tonsStr = force.tons < 1 ? force.tons.toFixed(2) : force.tons.toFixed(1);
         drawCtx.fillText('Усилие: ' + tonsStr + ' тс (' + (force.newtons / 1000).toFixed(1) + ' кН)', labelPt.cx, labelPt.cy - 26);
       }
-
-      // === Точка сгибания (перетаскиваемая) ===
-      const bp = w2c(S.bendPointX || 0, S.bendPointY || 0);
-      drawCtx.beginPath();
-      drawCtx.arc(bp.cx, bp.cy, 9, 0, Math.PI * 2);
-      drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
-      drawCtx.fill();
-      drawCtx.strokeStyle = isDark ? '#ffffff' : '#ffffff';
-      drawCtx.lineWidth = 2;
-      drawCtx.stroke();
-      drawCtx.beginPath();
-      drawCtx.arc(bp.cx, bp.cy, 3, 0, Math.PI * 2);
-      drawCtx.fillStyle = '#ffffff';
-      drawCtx.fill();
     }
   }
 }
@@ -2043,9 +2048,9 @@ function isNearFirst(cx, cy) {
   return Math.sqrt((f.cx - cx) ** 2 + (f.cy - cy) ** 2) < 15;
 }
 
-// Проверка клика по точке сгибания (когда активен предпросмотр)
+// Проверка клика по точке сгибания (когда инструменты показаны на канвас)
 function isNearBendPoint(cx, cy) {
-  if (S.previewBendIdx === null) return false;
+  if (!S.showToolsOnCanvas) return false;
   const bp = w2c(S.bendPointX || 0, S.bendPointY || 0);
   return Math.sqrt((bp.cx - cx) ** 2 + (bp.cy - cy) ** 2) < 14;
 }
@@ -2201,9 +2206,7 @@ drawCanvas.addEventListener('mousedown', e => {
           } else {
             S.previewBendIdx = bendIdx;
             S.previewFlip = false;
-            // Точка сгибания — на кончике пуансона
-            S.bendPointX = S.punchOffsetX || 0;
-            S.bendPointY = S.punchOffsetY || 0;
+            // Точка сгибания сохраняет позицию пользователя (не сбрасывается)
           }
           drawDrawCanvas();
           return;
@@ -2298,8 +2301,14 @@ drawCanvas.addEventListener('mousemove', e => {
   if (dragPunch) {
     const w = c2w(cx, cy);
     const p = S.snapToGrid ? snapPoint(w) : w;
+    // Сдвиг пуансона
+    const dx = p.x - (S.punchOffsetX || 0);
+    const dy = p.y - (S.punchOffsetY || 0);
     S.punchOffsetX = p.x;
     S.punchOffsetY = p.y;
+    // Точка гиба следует за пуансоном
+    S.bendPointX = (S.bendPointX || 0) + dx;
+    S.bendPointY = (S.bendPointY || 0) + dy;
     drawDrawCanvas();
     return;
   }

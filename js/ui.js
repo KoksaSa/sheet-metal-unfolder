@@ -630,8 +630,6 @@ function renderMetalParams() {
   h += '<div class="space-y-1"><div class="flex items-center justify-between"><label class="text-xs font-medium" title="' + t('kFactorTooltip') + '">' + t('kFactor') + '</label><span id="kf-display" class="text-xs font-mono text-gray-500 tabular-nums">' + S.metal.kFactor.toFixed(2) + '</span></div><input type="range" min="0.1" max="0.7" step="0.01" value="' + S.metal.kFactor + '" oninput="setMetalWithUndo({kFactor:Number(this.value)});document.getElementById(\'kf-display\').textContent=Number(this.value).toFixed(2)" class="w-full"></div>';
   // Width
   h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('blankWidth') + ' <span class="text-gray-500">(mm)</span></label><input type="number" min="1" max="10000" step="1" value="' + S.metal.width + '" onchange="const v=parseFloat(this.value);if(!isNaN(v)&&v>0){setMetalWithUndo({width:v});doUnfold();renderAll()}" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2"></div>';
-  // Part number
-  h += '<div class="space-y-1"><label class="text-xs font-medium">' + t('partNumber') + '</label><input type="text" value="' + (S.metal.partNumber || '') + '" onchange="setMetalWithUndo({partNumber:this.value})" class="w-full h-8 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2" placeholder="\u2014"></div>';
   c.innerHTML = h;
 }
 
@@ -651,8 +649,6 @@ function renderSnapSettings() {
       '">' + (v === 'none' ? '\u2014' : v + '°') + '</button>';
   });
   h += '</div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('dimensionsOnCanvas') + '</label><div class="switch' + (S.showDimensions ? ' active' : '') + '" onclick="S.showDimensions=!S.showDimensions;renderSnapSettings();drawDrawCanvas()"></div></div>';
-  h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="crosshair" class="h-3 w-3"></i>' + t('axisLabels') + '</label><div class="switch' + (S.showAxisLabels ? ' active' : '') + '" onclick="S.showAxisLabels=!S.showAxisLabels;renderSnapSettings();drawDrawCanvas()"></div></div>';
   h += '<div class="flex items-center justify-between"><label class="text-xs font-medium flex items-center gap-1.5"><i data-lucide="hammer" class="h-3 w-3"></i>' + t('showToolsOnCanvas') + '</label><div class="switch' + (S.showToolsOnCanvas ? ' active' : '') + '" onclick="S.showToolsOnCanvas=!S.showToolsOnCanvas;if(!S.showToolsOnCanvas){S.punchOffsetX=0;S.punchOffsetY=0;S.dieOffsetX=0;S.dieOffsetY=0;S.bendPointX=0;S.bendPointY=0;S.previewBendIdx=null;S.previewFlip=false;}renderSnapSettings();drawDrawCanvas()"></div></div>';
   c.innerHTML = h;
 }
