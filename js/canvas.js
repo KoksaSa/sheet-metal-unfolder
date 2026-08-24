@@ -392,8 +392,8 @@ function drawDrawCanvas() {
 
       // === Упор (backgauge) ===
       // Горизонтальный прямоугольник 20×5 мм, правой гранью касается самой левой
-      // точки контура (сим или плоской). Показывает расстояние от точки гиба до упора.
-      const contourPts = (S.simBends.length > 0) ? sim.pts : flatPts;
+      // точки ПЛОСКОГО контура. Упор не двигается при гибке (как на станке).
+      const contourPts = flatPts;
       if (contourPts && contourPts.length > 0) {
         let leftmostX = Infinity, leftmostY = 0;
         contourPts.forEach(p => { if (p.x < leftmostX) { leftmostX = p.x; leftmostY = p.y; } });
@@ -468,6 +468,10 @@ function drawDrawCanvas() {
         drawCtx.fillText(S.lang === 'en'
           ? 'Order: ' + S.simBends.map((idx, i) => (i + 1) + '\u2192B' + (idx + 1)).join('  ')
           : 'Порядок: ' + orderStr, 10, 42);
+        drawCtx.fillStyle = isDark ? '#93c5fd' : '#3b82f6';
+        drawCtx.fillText(S.lang === 'en'
+          ? 'Click a bent (green) marker to unfold — then bend another'
+          : 'Клик по согнутому (зелёному) маркеру — разгибает, затем гните другой', 10, 58);
       }
     }
     // В режиме симуляции не рисуем обычный контур и размеры
