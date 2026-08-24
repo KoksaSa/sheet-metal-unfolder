@@ -1254,7 +1254,7 @@ function generateDrawing() {
       const mx = (el.startX + el.endX) / 2;
       ctx.fillStyle = '#1d4ed8'; ctx.font = 'bold 9px sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(el.height.toFixed(1), uOfsX + mx * uScale, uOfsY + W * uScale / 2);
+      ctx.fillText(el.length.toFixed(1), uOfsX + mx * uScale, uOfsY + W * uScale / 2);
     } else {
       ctx.fillStyle = '#fed7aa';
       ctx.fillRect(uOfsX + el.startX * uScale, uOfsY, (el.endX - el.startX) * uScale, W * uScale);

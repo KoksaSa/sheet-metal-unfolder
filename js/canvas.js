@@ -1410,7 +1410,7 @@ function drawUnfoldCanvas() {
       unfoldCtx.font = 'bold 9px sans-serif';
       unfoldCtx.textAlign = 'center'; unfoldCtx.textBaseline = 'middle';
       const arrow = el.edge === 'bottom' ? '↓' : '↑';
-      unfoldCtx.fillText(el.height.toFixed(1) + ' ' + arrow, ox + mx * sc, oy + W * sc / 2);
+      unfoldCtx.fillText(el.length.toFixed(1) + ' ' + arrow, ox + mx * sc, oy + W * sc / 2);
       unfoldCtx.restore();
     }
   });
