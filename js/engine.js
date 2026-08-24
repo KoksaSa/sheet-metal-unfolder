@@ -169,10 +169,13 @@ function unfoldProfile(points, bendRadius, kFactor, thickness, width, die, punch
   }
 
   // Расчёт каймы (180° загиб)
+  // При 180° металл загибается обратно на лист — учитываем перекрытие (2T вместо T).
+  // Прямой участок: h - (R + T), минус T за перекрытие = h - R - 2T.
+  // Дуга 90° по нейтральной линии: π/2 * (R + K*T).
   function calcHem(h) {
     if (!h || h <= 0) return 0;
     const R = bendRadius;
-    return h - R - thickness + (Math.PI / 2) * (R + kFactor * thickness);
+    return h - R - 2 * thickness + (Math.PI / 2) * (R + kFactor * thickness);
   }
 
   // Build a map of hems by segment index
