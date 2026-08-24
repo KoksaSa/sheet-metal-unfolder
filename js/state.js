@@ -310,6 +310,35 @@ function saveProject() {
   }
 }
 
+// Сохранение позиций инструментов на холсте
+function saveToolPositions() {
+  try {
+    localStorage.setItem('sheet-metal-tool-positions', JSON.stringify({
+      punchOffsetX: S.punchOffsetX || 0,
+      punchOffsetY: S.punchOffsetY || 0,
+      dieOffsetX: S.dieOffsetX || 0,
+      dieOffsetY: S.dieOffsetY || 0,
+      bendPointX: S.bendPointX || 0,
+      bendPointY: S.bendPointY || 0
+    }));
+  } catch (err) { console.error('Save tool positions error:', err); }
+}
+
+// Загрузка позиций инструментов
+function loadToolPositions() {
+  try {
+    const raw = localStorage.getItem('sheet-metal-tool-positions');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d.punchOffsetX !== undefined) S.punchOffsetX = d.punchOffsetX;
+    if (d.punchOffsetY !== undefined) S.punchOffsetY = d.punchOffsetY;
+    if (d.dieOffsetX !== undefined) S.dieOffsetX = d.dieOffsetX;
+    if (d.dieOffsetY !== undefined) S.dieOffsetY = d.dieOffsetY;
+    if (d.bendPointX !== undefined) S.bendPointX = d.bendPointX;
+    if (d.bendPointY !== undefined) S.bendPointY = d.bendPointY;
+  } catch (err) { console.error('Load tool positions error:', err); }
+}
+
 function loadProject() {
   try {
     const raw = localStorage.getItem('sheet-metal-project');

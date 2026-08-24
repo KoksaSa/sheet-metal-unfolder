@@ -390,6 +390,64 @@ function drawDrawCanvas() {
         drawCtx.fillText(String(displayNum), c.cx, c.cy);
       });
 
+      // === Упор (backgauge) ===
+      // Горизонтальный прямоугольник 20×5 мм, правой гранью касается самой левой
+      // точки контура (сим или плоской). Показывает расстояние от точки гиба до упора.
+      const contourPts = (S.simBends.length > 0) ? sim.pts : flatPts;
+      if (contourPts && contourPts.length > 0) {
+        let leftmostX = Infinity, leftmostY = 0;
+        contourPts.forEach(p => { if (p.x < leftmostX) { leftmostX = p.x; leftmostY = p.y; } });
+        const gaugeW = 20, gaugeH = 5;
+        const gaugeRightX = leftmostX;
+        const gaugeLeftX = gaugeRightX - gaugeW;
+        const gaugeCY = leftmostY;
+        // Прямоугольник
+        const g1 = w2c(gaugeLeftX, gaugeCY - gaugeH / 2);
+        const g2 = w2c(gaugeRightX, gaugeCY + gaugeH / 2);
+        drawCtx.fillStyle = isDark ? '#6b7280aa' : '#6b7280cc';
+        drawCtx.strokeStyle = isDark ? '#9ca3af' : '#4b5563';
+        drawCtx.lineWidth = 1;
+        drawCtx.fillRect(g1.cx, g1.cy, g2.cx - g1.cx, g2.cy - g1.cy);
+        drawCtx.strokeRect(g1.cx, g1.cy, g2.cx - g1.cx, g2.cy - g1.cy);
+        // Засечки (штриховка)
+        drawCtx.strokeStyle = isDark ? '#9ca3af88' : '#4b556388';
+        drawCtx.lineWidth = 0.5;
+        for (let sx = gaugeLeftX + 2; sx < gaugeRightX; sx += 2) {
+          const pa = w2c(sx, gaugeCY - gaugeH / 2);
+          const pb = w2c(sx + 1.5, gaugeCY + gaugeH / 2);
+          drawCtx.beginPath(); drawCtx.moveTo(pa.cx, pa.cy); drawCtx.lineTo(pb.cx, pb.cy); drawCtx.stroke();
+        }
+        // Размерная линия от упора до точки гиба
+        const bpX = S.bendPointX || 0;
+        const bpY = S.bendPointY || 0;
+        const dimY = Math.min(gaugeCY - gaugeH / 2, bpY) - 8;
+        const ga = w2c(gaugeRightX, dimY);
+        const gb = w2c(bpX, dimY);
+        drawCtx.strokeStyle = isDark ? '#f59e0baa' : '#d97706aa';
+        drawCtx.lineWidth = 0.8;
+        drawCtx.setLineDash([3, 2]);
+        drawCtx.beginPath();
+        drawCtx.moveTo(ga.cx, ga.cy); drawCtx.lineTo(gb.cx, gb.cy); drawCtx.stroke();
+        drawCtx.setLineDash([]);
+        // Стрелочки
+        drawCtx.beginPath(); drawCtx.moveTo(ga.cx, ga.cy); drawCtx.lineTo(ga.cx + 4, ga.cy - 2); drawCtx.moveTo(ga.cx, ga.cy); drawCtx.lineTo(ga.cx + 4, ga.cy + 2); drawCtx.stroke();
+        drawCtx.beginPath(); drawCtx.moveTo(gb.cx, gb.cy); drawCtx.lineTo(gb.cx - 4, gb.cy - 2); drawCtx.moveTo(gb.cx, gb.cy); drawCtx.lineTo(gb.cx - 4, gb.cy + 2); drawCtx.stroke();
+        // Подпись расстояния
+        const dist = Math.abs(bpX - gaugeRightX);
+        const midX = (gaugeRightX + bpX) / 2;
+        const ml = w2c(midX, dimY);
+        drawCtx.fillStyle = isDark ? '#fbbf24' : '#d97706';
+        drawCtx.font = 'bold 10px sans-serif';
+        drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+        drawCtx.fillText(dist.toFixed(1) + ' mm', ml.cx, ml.cy - 2);
+        // Подпись "Упор"
+        const lblPt = w2c((gaugeLeftX + gaugeRightX) / 2, gaugeCY + gaugeH / 2 + 4);
+        drawCtx.fillStyle = isDark ? '#9ca3af' : '#6b7280';
+        drawCtx.font = '8px sans-serif';
+        drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
+        drawCtx.fillText(S.lang === 'en' ? 'Gauge' : 'Упор', lblPt.cx, lblPt.cy);
+      }
+
       // Подпись режима
       drawCtx.fillStyle = isDark ? '#f59e0b' : '#d97706';
       drawCtx.font = 'bold 11px sans-serif';

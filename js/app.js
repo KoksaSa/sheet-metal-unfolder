@@ -108,6 +108,9 @@ function init() {
     console.error('Auto-load error:', err);
   }
 
+  // Загружаем позиции инструментов на холсте
+  if (typeof loadToolPositions === 'function') loadToolPositions();
+
   renderAll();
 
   // Auto-save debounce
@@ -118,6 +121,7 @@ function init() {
       } else {
         localStorage.removeItem('sheet-metal-project');
       }
+      if (typeof saveToolPositions === 'function') saveToolPositions();
     } catch (err) {
       console.error('Auto-save error:', err);
     }
