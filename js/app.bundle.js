@@ -1,4 +1,3 @@
-(function() {
 // ==================== INTERNATIONALIZATION ====================
 const STRINGS = {
   ru: {
@@ -8732,5 +8731,3 @@ if (document.readyState === 'loading') {
   init();
 }
 
-
-})();
