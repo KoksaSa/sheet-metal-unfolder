@@ -1,4 +1,8 @@
-// ==================== STATE ====================
+// ═══════════════════════════════════════════════════════════════
+// STATE / СОСТОЯНИЕ — глобальный объект S, операции с точками,
+// undo/redo для точек и параметров металла
+// ═══════════════════════════════════════════════════════════════
+
 const S = {
   points: [],
   metal: { metalTypeIndex: 1, thickness: 0.8, bendRadius: 1.6, kFactor: 0.5, width: 600, partNumber: '', dieIndex: 0, punchIndex: 0 },
@@ -14,16 +18,39 @@ const S = {
   showAxisLabels: true,
   showToolsOnCanvas: false,
   simMode: false,
-  simBends: [], // индексы активных (согнутых) гибов в симуляции
-  bendOrder: [], // порядок гибки: массив индексов гибов в порядке кликов
-  punchOffsetX: 0,
-  punchOffsetY: 0,
-  dieOffsetX: 0,
-  dieOffsetY: 0,
-  bendPointX: 0,
-  bendPointY: 0,
+  simFaceSide: 'up', // лицевая сторона: 'up' или 'down'
+  simFlipX: false, // переворот по X (лево↔право)
+  simFlipY: false, // переворот по Y (верх↔низ)
+  simBentMarkers: [], // индексы согнутых гибов в порядке выполнения
+  toolLocked: false, // инструменты заблокированы (режим симуляции) — нельзя перетащить
+  // === Анимация гибки (2D) ===
+  simAnimRunning: false,
+  simAnimBendIdx: -1,
+  simAnimProgress: 0,
+  simAnimDirection: 1,
+  simAnimStartT: 0,
+  simAnimOnDone: null,
+  simSequenceRAF: null,
+  simSequenceTimer: null,
+  simSequence: [],
+  simSequenceStep: -1,
+  punchOffsetX: parseFloat(localStorage.getItem('punchOffsetX')) || 0,
+  punchOffsetY: parseFloat(localStorage.getItem('punchOffsetY')) || 0,
+  dieOffsetX: parseFloat(localStorage.getItem('dieOffsetX')) || 0,
+  dieOffsetY: parseFloat(localStorage.getItem('dieOffsetY')) || 0,
+  bendPointX: parseFloat(localStorage.getItem('bendPointX')) || 0,
+  bendPointY: parseFloat(localStorage.getItem('bendPointY')) || 0,
   previewBendIdx: null,
   previewFlip: false,
+  selectedBendIndex: undefined, // выбранный гиб в режиме симуляции
+  stopperVisible: true,          // упор (задний упор гибочного пресса) показан в симуляции
+  // v4.4: подпись профиля, на которой накоплена последовательность гибов
+  // (сверяется при входе в «Симуляцию» — профиль изменился → сброс)
+  simProfileSig: null,
+  // Для каждого выполненного гиба: {stopperDist, faceOrient} — позиция упора
+  // ДО гибки и ориентация лицевой стороны в момент гибки. Индексируется по bendIdx.
+  // Используется в чертеже «Последовательность гибки».
+  bendStepMeta: {},
   checkDieHeight: true,
   viewport: { offsetX: 0, offsetY: 0, scale: 3 },
   unfoldResult: null,
@@ -34,7 +61,6 @@ const S = {
   metalRedoHistory: [],
   isDark: localStorage.getItem('theme') === 'dark',
   showSegments: false,
-  showPoints: false,
   animBendIdx: -1,
   dxfOpts: { layers: { outline: true, bend: true, dimension: true, text: true, info: true, tick: true } },
   mouseWorld: null,
@@ -43,7 +69,7 @@ const S = {
   drawFromIdx: null // индекс точки, от которой продолжается рисование (null = последняя)
 };
 
-// ==================== STATE HELPERS ====================
+// ==================== ХЕЛПЕРЫ СОСТОЯНИЯ ====================
 function cloneState() {
   return {
     points: S.points.map(pt => ({ ...pt })),
@@ -118,9 +144,48 @@ function clearDrawing() {
   S.hemHoveredSeg = -1;
   S.drawFromIdx = null;
   S.unfoldResult = null;
+  // v4.4 FIX: полный сброс состояния симуляции — раньше «Очистить» удалял
+  // только точки, а simBentMarkers/bendStepMeta/перевороты оставались от
+  // СТАРОЙ детали: новая деталь наследовала «уже частично согнутый» вид
+  // (лечилось только F5).
+  if (typeof resetSimulationState === 'function') resetSimulationState();
   if (typeof view3dUserZoomed !== 'undefined') view3dUserZoomed = false;
   localStorage.removeItem('sheet-metal-project');
   renderAll();
+}
+
+// v4.4: подпись профиля по координатам точек (округление 0.1 мм).
+// Используется для детекта «профиль изменился» (очищён/перерисован/
+// отредактирован) с момента накопления последовательности гибов.
+function simProfileSignature() {
+  if (!S.points || S.points.length === 0) return null;
+  return S.points.map(p => (Math.round(p.x * 10) / 10) + ':' + (Math.round(p.y * 10) / 10)).join('|');
+}
+
+// v4.4: ПОЛНЫЙ сброс состояния симуляции: маркеры согнутых гибов,
+// меты шагов, перевороты, лицевая сторона, превью, режим симуляции,
+// шаги 3D-модалки и подпись профиля. Вызывается из «Очистить»,
+// loadPreset и при смене профиля — новая деталь ВСЕГДА начинается
+// с плоского листа.
+function resetSimulationState() {
+  S.simBentMarkers = [];
+  S.bendStepMeta = {};
+  S.simFlipX = false;
+  S.simFlipY = false;
+  S.simFaceSide = 'up';
+  S.selectedBendIndex = undefined;
+  S.previewBendIdx = null;
+  S.previewFlip = false;
+  S.simProfileSig = null;
+  // 3D-модалка: сброс шагов (модуль canvas/sim3d.js, если загружен)
+  if (typeof sim3dResetForNewProfile === 'function') sim3dResetForNewProfile();
+  // Останавливаем анимации и выходим из режима симуляции
+  if (S.simAnimRunning || S.showToolsOnCanvas) {
+    if (typeof stopAnimation === 'function') stopAnimation();
+  }
+  S.showToolsOnCanvas = false;
+  S.simMode = false;
+  S.toolLocked = false;
 }
 
 function doUndo() {
@@ -195,195 +260,4 @@ function doUnfold() {
   const die = getDieByIndex(S.metal.dieIndex);
   const punch = getPunchByIndex(S.metal.punchIndex);
   S.unfoldResult = unfoldProfile(S.points, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, S.metal.width, die, punch);
-}
-
-// ==================== TOAST ====================
-function toast(msg, type = 'success') {
-  const c = document.getElementById('toast-container');
-  const d = document.createElement('div');
-  d.className = 'toast toast-' + type;
-  d.textContent = msg;
-  c.appendChild(d);
-  setTimeout(() => d.remove(), 2500);
-}
-
-// ==================== DOWNLOADS ====================
-function downloadBlob(content, type, fn) {
-  const b = new Blob([content], { type });
-  const u = URL.createObjectURL(b);
-  const a = document.createElement('a');
-  a.href = u; a.download = fn;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(u);
-}
-
-function exportDXF() {
-  if (!S.unfoldResult) return;
-  const mtName = S.lang === 'en' ? METAL_TYPES[S.metal.metalTypeIndex].nameEn : METAL_TYPES[S.metal.metalTypeIndex].nameRu;
-  const dxf = generateDXF(S.unfoldResult, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, mtName, S.dxfOpts);
-  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  downloadBlob(dxf, 'application/dxf', 'unfold-' + ts + '.dxf');
-  toast(t('exportOk'));
-}
-
-function exportSVG() {
-  if (!S.unfoldResult) return;
-  const mtName = S.lang === 'en' ? METAL_TYPES[S.metal.metalTypeIndex].nameEn : METAL_TYPES[S.metal.metalTypeIndex].nameRu;
-  const svg = generateSVG(S.unfoldResult, S.metal.bendRadius, S.metal.kFactor, S.metal.thickness, mtName);
-  downloadBlob(svg, 'image/svg+xml', 'unfold-pattern.svg');
-  toast(t('exportOk'));
-}
-
-function exportPNG(whiteBg) {
-  const cv = document.getElementById('unfold-canvas');
-  if (!cv) return;
-  const exp = document.createElement('canvas');
-  exp.width = cv.width; exp.height = cv.height;
-  const ctx = exp.getContext('2d');
-  ctx.drawImage(cv, 0, 0);
-  if (whiteBg) {
-    ctx.globalCompositeOperation = 'destination-over';
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, exp.width, exp.height);
-  }
-  exp.toBlob(b => {
-    if (!b) return;
-    downloadBlob(b, 'image/png', 'unfold-pattern.png');
-    toast(t('exportOk'));
-  }, 'image/png');
-}
-
-function exportJSON() {
-  const data = {
-    version: '3.8',
-    points: S.points,
-    metal: S.metal,
-    hems: S.hems,
-    toolMode: S.toolMode,
-    snapToGrid: S.snapToGrid,
-    gridSize: S.gridSize,
-    angleSnap: S.angleSnap
-  };
-  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  downloadBlob(JSON.stringify(data, null, 2), 'application/json', 'sheet-metal-' + ts + '.json');
-  toast(t('exportOk'));
-}
-
-function triggerImport() {
-  document.getElementById('file-import').click();
-}
-
-function importJSON(e) {
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = ev => {
-    try {
-      const d = JSON.parse(ev.target.result);
-      if (!d.points || !d.metal) { toast(t('importFormatError'), 'error'); return; }
-      S.points = d.points;
-      if (d.metal) Object.assign(S.metal, d.metal);
-      if (d.hems) S.hems = d.hems; else S.hems = [];
-      S.unfoldResult = null;
-      S.undoHistory = [];
-      S.redoHistory = [];
-      toast(t('loadedOk'));
-      renderAll();
-    } catch (err) {
-      console.error('Import error:', err);
-      toast(t('importError'), 'error');
-    }
-  };
-  r.readAsText(f);
-  e.target.value = '';
-}
-
-function saveProject() {
-  try {
-    localStorage.setItem('sheet-metal-project', JSON.stringify({ points: S.points, metal: S.metal, hems: S.hems }));
-    toast(t('savedOk'));
-  } catch (err) {
-    console.error('Save error:', err);
-    toast(t('importError'), 'error');
-  }
-}
-
-// Сохранение позиций инструментов на холсте
-function saveToolPositions() {
-  try {
-    localStorage.setItem('sheet-metal-tool-positions', JSON.stringify({
-      punchOffsetX: S.punchOffsetX || 0,
-      punchOffsetY: S.punchOffsetY || 0,
-      dieOffsetX: S.dieOffsetX || 0,
-      dieOffsetY: S.dieOffsetY || 0,
-      bendPointX: S.bendPointX || 0,
-      bendPointY: S.bendPointY || 0
-    }));
-  } catch (err) { console.error('Save tool positions error:', err); }
-}
-
-// Загрузка позиций инструментов
-function loadToolPositions() {
-  try {
-    const raw = localStorage.getItem('sheet-metal-tool-positions');
-    if (!raw) return;
-    const d = JSON.parse(raw);
-    if (d.punchOffsetX !== undefined) S.punchOffsetX = d.punchOffsetX;
-    if (d.punchOffsetY !== undefined) S.punchOffsetY = d.punchOffsetY;
-    if (d.dieOffsetX !== undefined) S.dieOffsetX = d.dieOffsetX;
-    if (d.dieOffsetY !== undefined) S.dieOffsetY = d.dieOffsetY;
-    if (d.bendPointX !== undefined) S.bendPointX = d.bendPointX;
-    if (d.bendPointY !== undefined) S.bendPointY = d.bendPointY;
-  } catch (err) { console.error('Load tool positions error:', err); }
-}
-
-function loadProject() {
-  try {
-    const raw = localStorage.getItem('sheet-metal-project');
-    if (!raw) { toast(t('noSaved'), 'error'); return; }
-    const d = JSON.parse(raw);
-    if (!d.points || !d.metal) { toast(t('importFormatError'), 'error'); return; }
-    S.points = d.points;
-    Object.assign(S.metal, d.metal);
-    if (d.hems) S.hems = d.hems; else S.hems = [];
-    S.unfoldResult = null;
-    S.undoHistory = [];
-    S.redoHistory = [];
-    toast(t('loadedOk'));
-    renderAll();
-  } catch (err) {
-    console.error('Load error:', err);
-    toast(t('importError'), 'error');
-  }
-}
-
-// ==================== THEME & LANG ====================
-function applyTheme() {
-  document.documentElement.classList.toggle('dark', S.isDark);
-  document.getElementById('icon-sun').classList.toggle('hidden', S.isDark);
-  document.getElementById('icon-moon').classList.toggle('hidden', !S.isDark);
-  localStorage.setItem('theme', S.isDark ? 'dark' : 'light');
-}
-
-function toggleTheme() {
-  S.isDark = !S.isDark;
-  applyTheme();
-}
-
-function toggleLang() {
-  S.lang = S.lang === 'ru' ? 'en' : 'ru';
-  localStorage.setItem('sheet-metal-lang', S.lang);
-  renderAll();
-}
-
-function toggleAutoUnfold() {
-  S.autoUnfold = !S.autoUnfold;
-  if (S.autoUnfold) maybeAutoUnfold();
-  renderAll();
-}
-
-function toggleLeftSidebar() {
-  document.getElementById('mobile-sidebar').classList.toggle('hidden');
 }
