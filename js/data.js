@@ -109,18 +109,30 @@ function deleteCustomPunch(id) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ПОЛУЧЕНИЕ ИНСТРУМЕНТА ПО ИНДЕКСУ (только свои инструменты)
+// ЕДИНЫЙ РЕЕСТР ИНСТРУМЕНТОВ (встроенные пресеты + свои)
+// Индексация: [0 .. N-1] — встроенные DIES/PUNCHES,
+//             [N .. ] — пользовательские (customDies/customPunches).
 // ═══════════════════════════════════════════════════════════════
-function getDieByIndex(idx) {
+function getAllDies() {
   const tools = loadCustomTools();
+  return DIES.concat(tools.customDies || []);
+}
+
+function getAllPunches() {
+  const tools = loadCustomTools();
+  return PUNCHES.concat(tools.customPunches || []);
+}
+
+function getDieByIndex(idx) {
   if (idx === undefined || idx === null || isNaN(idx)) idx = 0;
-  return tools.customDies[idx] || null;
+  const all = getAllDies();
+  return all[idx] || null;
 }
 
 function getPunchByIndex(idx) {
-  const tools = loadCustomTools();
   if (idx === undefined || idx === null || isNaN(idx)) idx = 0;
-  return tools.customPunches[idx] || null;
+  const all = getAllPunches();
+  return all[idx] || null;
 }
 
 const PRESET_SHAPES = [

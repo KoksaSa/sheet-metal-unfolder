@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bend Y Calculator — база калибровки листогиба</title>
+<style>
+:root{
+  --bg:#f3f5f7;--panel:#fff;--text:#1d252c;--muted:#68737d;
+  --line:#dce1e5;--accent:#2563eb;--accent2:#1d4ed8;--danger:#dc2626;
+  --ok:#15803d;--warn:#b45309;--shadow:0 4px 18px rgba(0,0,0,.07);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Arial,sans-serif}
+header{background:#17212b;color:#fff;padding:18px 24px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:22px} header p{margin:5px 0 0;color:#b9c4ce}
+.container{max-width:1400px;margin:auto;padding:20px}
+.tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:#fff;padding:10px 16px;border-radius:8px;cursor:pointer}
+.tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.section{display:none}.section.active{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h2{font-size:17px;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:12px}
+.grid-3{display:grid;grid-template-columns:repeat(3,minmax(170px,1fr));gap:12px}
+.field label{display:block;font-weight:600;margin-bottom:5px}
+input,select,button{font:inherit}
+input,select{width:100%;padding:9px 10px;border:1px solid #cbd2d8;border-radius:7px;background:#fff}
+input:focus,select:focus{outline:2px solid #bfdbfe;border-color:var(--accent)}
+button{border:0;border-radius:7px;padding:9px 13px;cursor:pointer;background:var(--accent);color:#fff}
+button:hover{background:var(--accent2)}
+button.secondary{background:#eef2f5;color:#25313a;border:1px solid var(--line)}
+button.danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+button.success{background:#dcfce7;color:#166534;border:1px solid #bbf7d0}
+button.small{padding:6px 9px;font-size:12px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.result{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}
+.bigY{font-size:42px;font-weight:700;color:var(--accent);line-height:1.1}
+.resultBox{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:16px}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpi>div{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:8px}
+.kpi strong{display:block;font-size:18px;margin-top:3px}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.high{background:#dcfce7;color:#166534}.medium{background:#fef3c7;color:#92400e}.low{background:#fee2e2;color:#991b1b}
+.note{color:var(--muted);font-size:13px}
+.warning{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px;border-radius:8px}
+.info{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;padding:10px;border-radius:8px}
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+th{background:#f8fafc;font-size:12px;color:#56616b}
+.empty{text-align:center;color:var(--muted);padding:25px}
+.inline{display:flex;gap:8px;align-items:center}
+.checkbox{width:auto}
+footer{color:var(--muted);text-align:center;padding:20px}
+@media(max-width:900px){.grid,.grid-3{grid-template-columns:repeat(2,1fr)}.result{grid-template-columns:1fr}.kpi{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.grid,.grid-3,.kpi{grid-template-columns:1fr}.container{padding:10px}header{padding:14px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Калькулятор Y для листогибочного пресса</h1>
+  <p>Технологическая база реальных испытаний, калибровка станка и расчёт рекомендуемого Y.</p>
+  <a href="index.html" class="btn" style="display:inline-block;margin-top:8px;background:#2d2d50;color:#ccc;font-size:13px;text-decoration:none;padding:6px 12px;border-radius:6px;">← Калькулятор развёрток</a>
+</header>
+
+<div class="container">
+  <div class="tabs">
+    <button class="tab active" data-tab="calc">Расчёт Y</button>
+    <button class="tab" data-tab="tests">Испытания</button>
+    <button class="tab" data-tab="machines">Станки</button>
+    <button class="tab" data-tab="data">База и настройки</button>
+  </div>
+
+  <section id="calc" class="section active">
+    <div class="card">
+      <h2>Параметры будущего гиба</h2>
+      <div class="grid">
+        <div class="field"><label>Станок</label><select id="cMachine"></select></div>
+        <div class="field"><label>Материал</label><input id="cMaterial" list="materials" value="Ст3"><datalist id="materials"></datalist></div>
+        <div class="field"><label>Толщина, мм</label><input id="cThickness" type="number" step="0.01" min="0.01" value="1.5"></div>
+        <div class="field"><label>Направление волокон</label>
+          <select id="cGrain"><option value="along">Гибка вдоль волокон</option><option value="across">Гибка поперёк волокон</option><option value="unknown">Неизвестно</option></select>
+        </div>
+        <div class="field"><label>Ширина матрицы V, мм</label><input id="cV" type="number" step="0.1" min="0.1" value="10"></div>
+        <div class="field"><label>Длина линии гиба, мм</label><input id="cLength" type="number" step="1" min="1" value="300"></div>
+        <div class="field"><label>Требуемый угол детали, °</label><input id="cAngle" type="number" step="0.1" min="1" max="179" value="90"></div>
+      </div>
+      <div class="actions"><button onclick="calculate()">Рассчитать Y</button><button class="secondary" onclick="fillExample()">Загрузить пример</button></div>
+      <!-- v5.0: подсказка о минимальной полке гиба (грубое ориентирование) -->
+      <div class="info" id="minFlangeInfo" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card">
+      <h2>Результат</h2>
+      <div id="calcResult" class="empty">Введите параметры и нажмите «Рассчитать Y».</div>
+    </div>
+  </section>
+
+  <section id="tests" class="section">
+    <div class="card">
+      <h2>Добавить реальный пробный гиб</h2>
+      <div class="info">Здесь записывается именно то, что оператор реально выставил на станке и какой угол получился после гибки. Эти точки становятся основой для будущих рекомендаций.</div>
+      <div class="grid" style="margin-top:14px">
+        <div class="field"><label>Дата</label><input id="tDate" type="date"></div>
+        <div class="field"><label>Станок</label><select id="tMachine"></select></div>
+        <div class="field"><label>Материал</label><input id="tMaterial" list="materials" value="Ст3"></div>
+        <div class="field"><label>Толщина, мм</label><input id="tThickness" type="number" step="0.01" min="0.01" value="1.5"></div>
+        <div class="field"><label>Направление волокон</label>
+          <select id="tGrain"><option value="along">Гибка вдоль волокон</option><option value="across">Гибка поперёк волокон</option><option value="unknown">Неизвестно</option></select>
+        </div>
+        <div class="field"><label>Матрица V, мм</label><input id="tV" type="number" step="0.1" min="0.1" value="10"></div>
+        <div class="field"><label>Длина гиба, мм</label><input id="tLength" type="number" step="1" min="1" value="300"></div>
+        <div class="field"><label>Требуемый угол, °</label><input id="tTarget" type="number" step="0.1" min="1" max="179" value="90"></div>
+        <div class="field"><label>Фактический Y на станке</label><input id="tY" type="number" step="0.01" value="93"></div>
+        <div class="field"><label>Фактический полученный угол, °</label><input id="tActual" type="number" step="0.01" value="91"></div>
+        <div class="field"><label>Оператор / комментарий</label><input id="tNote" type="text" placeholder="Например: лист из партии 2026-08"></div>
+      </div>
+      <div class="actions"><button onclick="addTest()">Сохранить испытание</button><button class="secondary" onclick="clearTestForm()">Очистить</button></div>
+    </div>
+
+    <div class="card">
+      <h2>История испытаний</h2>
+      <div class="grid-3">
+        <div class="field"><label>Фильтр: станок</label><select id="fMachine" onchange="renderTests()"></select></div>
+        <div class="field"><label>Фильтр: материал</label><input id="fMaterial" oninput="renderTests()" placeholder="Все материалы"></div>
+        <div class="field"><label>Фильтр: толщина</label><input id="fThickness" type="number" step="0.01" oninput="renderTests()" placeholder="Все"></div>
+      </div>
+      <div id="testsTable"></div>
+    </div>
+  </section>
+
+  <section id="machines" class="section">
+    <div class="card">
+      <h2>Станки</h2>
+      <div class="grid">
+        <div class="field"><label>Название станка</label><input id="mName" placeholder="Листогиб №1"></div>
+        <div class="field"><label>Единица Y</label><select id="mUnit"><option value="mm">мм</option><option value="custom">условные единицы контроллера</option></select></div>
+        <div class="field"><label>Контрольная точка Y</label><input id="mRefY" type="number" step="0.01" placeholder="93"></div>
+        <div class="field"><label>Ожидаемый угол контрольной точки</label><input id="mRefAngle" type="number" step="0.01" placeholder="90"></div>
+      </div>
+      <div class="actions"><button onclick="addMachine()">Добавить станок</button></div>
+      <div id="machinesTable"></div>
+    </div>
+
+    <div class="card">
+      <h2>Калибровочная поправка станка</h2>
+      <div class="info">Поправка применяется ко всем технологическим рекомендациям выбранного станка. Это позволяет отдельно учитывать текущее состояние станка. Для безопасности поправку нужно менять только после контрольного гиба.</div>
+      <div class="grid" style="margin-top:14px">
+        <div class="field"><label>Станок</label><select id="calMachine"></select></div>
+        <div class="field"><label>Текущая поправка Y</label><input id="calCorrection" type="number" step="0.01" value="0"></div>
+        <div class="field"><label>Причина / дата</label><input id="calNote" placeholder="Контрольный гиб 29.08.2026"></div>
+      </div>
+      <div class="actions"><button onclick="saveCalibration()">Сохранить поправку</button></div>
+      <div id="calHistory"></div>
+    </div>
+  </section>
+
+  <section id="data" class="section">
+    <div class="card">
+      <h2>База данных</h2>
+      <p class="note">Все данные хранятся локально в браузере этого компьютера. Экспортируйте JSON как резервную копию и для переноса базы на другой компьютер.</p>
+      <div class="actions">
+        <button onclick="exportData()">Экспорт JSON</button>
+        <button class="secondary" onclick="document.getElementById('importFile').click()">Импорт JSON</button>
+        <button class="secondary" onclick="loadDemoData()">Загрузить демонстрационные данные</button>
+        <button class="danger" onclick="clearAll()">Удалить всю базу</button>
+      </div>
+      <input id="importFile" type="file" accept=".json,application/json" style="display:none" onchange="importData(event)">
+    </div>
+    <div class="card">
+      <h2>Как рассчитывается Y</h2>
+      <ol>
+        <li>Система сначала ищет испытания с совпадающими станком, материалом, толщиной, направлением волокон и V.</li>
+        <li>Если есть точки с близкой длиной гиба и требуемым углом, используется их зависимость «Y → фактический угол».</li>
+        <li>Если точного совпадения нет, ближайшие реальные испытания получают меньший вес по мере увеличения отличия параметров.</li>
+        <li>Для двух соседних точек по углу используется линейная интерполяция. Если нужный угол находится вне диапазона измеренных точек, выполняется осторожная экстраполяция и доверие снижается.</li>
+        <li>После расчёта добавляется текущая калибровочная поправка выбранного станка.</li>
+        <li>Чем больше реальных испытаний и чем ближе они к заданным параметрам, тем выше уровень доверия.</li>
+      </ol>
+      <div class="warning"><b>Важно:</b> этот модуль не знает механики конкретного контроллера и не может гарантировать универсальную физическую формулу Y. Он строит эмпирическую характеристику именно по вашим реальным пробным гибам. Это принципиально важно для старых прессов без индивидуального распределения усилий по цилиндрам.</div>
+    </div>
+  </section>
+
+  <footer>Bend Y Calculator • локальная база • версия 1.0</footer>
+</div>
+
+<script>
+const KEY='bendYCalculator_v1';
+
+let db = {
+  machines: [
+    {id:'m1',name:'Листогиб №1',unit:'mm',correction:0,calHistory:[]}
+  ],
+  tests:[]
+};
+
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8)}
+function today(){return new Date().toISOString().slice(0,10)}
+function save(){localStorage.setItem(KEY,JSON.stringify(db)); refreshAll()}
+function load(){
+  try{
+    const x=JSON.parse(localStorage.getItem(KEY));
+    if(x && Array.isArray(x.machines) && Array.isArray(x.tests)) db=x;
+  }catch(e){}
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function grainName(x){return x==='along'?'вдоль':x==='across'?'поперёк':'неизвестно'}
+function num(v){return Number(v)}
+function fmt(v,d=2){return Number.isFinite(v)?v.toFixed(d):'—'}
+function getMachine(id){return db.machines.find(m=>m.id===id)}
+function populateSelect(id, includeAll=false){
+  const el=document.getElementById(id); if(!el)return;
+  const current=el.value;
+  let html=includeAll?'<option value="">Все станки</option>':'';
+  db.machines.forEach(m=>html+=`<option value="${esc(m.id)}">${esc(m.name)}</option>`);
+  el.innerHTML=html;
+  if([...el.options].some(o=>o.value===current))el.value=current;
+}
+function refreshAll(){
+  ['cMachine','tMachine','calMachine'].forEach(id=>populateSelect(id));
+  populateSelect('fMachine',true);
+  renderTests(); renderMachines(); renderCalibration(); updateMaterials();
+}
+function updateMaterials(){
+  const vals=[...new Set(db.tests.map(t=>t.material).filter(Boolean))];
+  document.getElementById('materials').innerHTML=vals.map(x=>`<option value="${esc(x)}">`).join('');
+}
+
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); document.getElementById(b.dataset.tab).classList.add('active');
+}));
+
+function paramsFrom(prefix){
+  return {
+    machine:document.getElementById(prefix+'Machine').value,
+    material:document.getElementById(prefix+'Material').value.trim(),
+    thickness:num(document.getElementById(prefix+'Thickness').value),
+    grain:document.getElementById(prefix+'Grain').value,
+    v:num(document.getElementById(prefix+(prefix==='c'?'V':'V')).value),
+    length:num(document.getElementById(prefix+'Length').value),
+  };
+}
+
+function similarity(t,p){
+  if(t.machine!==p.machine) return 0;
+  let score=0, total=0;
+  // Exact/near material is mandatory-ish.
+  if(t.material.toLowerCase()===p.material.toLowerCase()){score+=25}
+  else return 0;
+  total+=25;
+  const td=Math.abs(t.thickness-p.thickness);
+  score+=Math.max(0,25*(1-Math.min(td/Math.max(p.thickness,0.1),1))); total+=25;
+  if(t.grain===p.grain)score+=15; else if(t.grain==='unknown'||p.grain==='unknown')score+=6; total+=15;
+  const vd=Math.abs(t.v-p.v)/Math.max(p.v,1);
+  score+=Math.max(0,15*(1-Math.min(vd,1))); total+=15;
+  const ld=Math.abs(t.length-p.length)/Math.max(p.length,1);
+  score+=Math.max(0,10*(1-Math.min(ld,1))); total+=10;
+  return score/total;
+}
+
+function weightedAngleAtY(points, y){
+  let arr=points.slice().sort((a,b)=>a.y-b.y);
+  for(let i=0;i<arr.length-1;i++){
+    const a=arr[i],b=arr[i+1];
+    if((y>=a.y&&y<=b.y)||(y>=b.y&&y<=a.y)){
+      if(Math.abs(b.y-a.y)<1e-9)return a.angle;
+      return a.angle+(y-a.y)*(b.angle-a.angle)/(b.y-a.y);
+    }
+  }
+  return null;
+}
+
+function yForTarget(points,target){
+  const pts=points.slice().sort((a,b)=>a.angle-b.angle);
+  // Collapse nearly duplicate angle values by averaging Y.
+  const groups=[];
+  pts.forEach(p=>{
+    let g=groups.find(x=>Math.abs(x.angle-p.angle)<0.05);
+    if(!g)groups.push({angle:p.angle,ys:[p.y]});
+    else g.ys.push(p.y);
+  });
+  groups.forEach(g=>g.y=g.ys.reduce((a,b)=>a+b,0)/g.ys.length);
+  if(groups.length===1)return {y:groups[0].y,mode:'single'};
+  for(let i=0;i<groups.length-1;i++){
+    const a=groups[i],b=groups[i+1];
+    if((target>=a.angle&&target<=b.angle)||(target>=b.angle&&target<=a.angle)){
+      if(Math.abs(b.angle-a.angle)<0.001)return {y:(a.y+b.y)/2,mode:'interpolation'};
+      return {y:a.y+(target-a.angle)*(b.y-a.y)/(b.angle-a.angle),mode:'interpolation'};
+    }
+  }
+  // Linear extrapolation from two closest points.
+  let pair;
+  if(target<groups[0].angle) pair=[groups[0],groups[1]];
+  else pair=[groups[groups.length-2],groups[groups.length-1]];
+  const a=pair[0],b=pair[1];
+  if(Math.abs(b.angle-a.angle)<0.001)return {y:b.y,mode:'extrapolation'};
+  return {y:a.y+(target-a.angle)*(b.y-a.y)/(b.angle-a.angle),mode:'extrapolation'};
+}
+
+function calculate(){
+  const p={
+    machine:document.getElementById('cMachine').value,
+    material:document.getElementById('cMaterial').value.trim(),
+    thickness:num(document.getElementById('cThickness').value),
+    grain:document.getElementById('cGrain').value,
+    v:num(document.getElementById('cV').value),
+    length:num(document.getElementById('cLength').value),
+    angle:num(document.getElementById('cAngle').value)
+  };
+  if(!p.machine){document.getElementById('calcResult').innerHTML='<div class="warning">Сначала добавьте или выберите станок.</div>';return}
+  const candidates=db.tests.map(t=>({...t,sim:similarity(t,p)})).filter(t=>t.sim>0.05);
+  if(!candidates.length){
+    document.getElementById('calcResult').innerHTML='<div class="warning"><b>Нет подходящих испытаний.</b><br>Добавьте хотя бы 2–3 реальных пробных гиба для этой комбинации параметров.</div>';
+    return;
+  }
+  // Prefer close parameter matches, but preserve enough points around target angle.
+  const scored=candidates.map(t=>{
+    const angleDist=Math.abs(t.target-p.angle);
+    const angleWeight=1/(1+angleDist/15);
+    return {...t,weight:t.sim*0.65+angleWeight*0.35};
+  }).sort((a,b)=>b.weight-a.weight);
+  const selected=scored.slice(0,30);
+  const points=selected.map(t=>({y:t.y,angle:t.actual,weight:t.weight,target:t.target}));
+  // Build a weighted cloud. First try interpolation among best points. If target-specific tests exist, use their curve.
+  let estimate=null, method='';
+  const exactTarget=selected.filter(t=>Math.abs(t.target-p.angle)<=0.25);
+  if(exactTarget.length>=2){
+    const r=yForTarget(exactTarget.map(t=>({y:t.y,angle:t.actual})),p.angle);
+    estimate=r.y; method='по испытаниям с тем же требуемым углом';
+  }else{
+    const usable=selected.filter(t=>Number.isFinite(t.actual)&&Number.isFinite(t.y));
+    if(usable.length>=2){
+      // Weighted local regression angle = a + b*Y, then invert.
+      const wsum=usable.reduce((s,t)=>s+t.weight,0);
+      const my=usable.reduce((s,t)=>s+t.weight*t.y,0)/wsum;
+      const ma=usable.reduce((s,t)=>s+t.weight*t.actual,0)/wsum;
+      let cov=0,varY=0;
+      usable.forEach(t=>{cov+=t.weight*(t.y-my)*(t.actual-ma);varY+=t.weight*(t.y-my)*(t.y-my)});
+      let b=varY>1e-9?cov/varY:0;
+      if(Math.abs(b)<0.01){
+        const r=yForTarget(usable.map(t=>({y:t.y,angle:t.actual})),p.angle);
+        estimate=r.y; method=r.mode==='extrapolation'?'экстраполяция':'интерполяция';
+      }else{
+        estimate=my+(p.angle-ma)/b;
+        const minY=Math.min(...usable.map(t=>t.y)),maxY=Math.max(...usable.map(t=>t.y));
+        method=(estimate<minY||estimate>maxY)?'линейная экстраполяция':'линейная интерполяция';
+      }
+    }
+  }
+  if(!Number.isFinite(estimate)){
+    document.getElementById('calcResult').innerHTML='<div class="warning">Не удалось получить устойчивую зависимость Y → угол. Добавьте реальные точки испытаний с разными Y.</div>';return;
+  }
+  const machine=getMachine(p.machine);
+  const correction=machine?.correction||0;
+  const finalY=estimate+correction;
+  const avgSim=selected.reduce((s,t)=>s+t.weight,0)/selected.length;
+  const exact=selected.filter(t=>t.sim>=0.92).length;
+  let confidence='low', confText='Низкая';
+  if(exact>=4 && avgSim>=0.82){confidence='high';confText='Высокая'}
+  else if(exact>=2 && avgSim>=0.62){confidence='medium';confText='Средняя'}
+  const extrap=method.includes('экстраполя');
+  if(extrap && confidence==='high'){confidence='medium';confText='Средняя'}
+  if(extrap && confidence==='medium'){confidence='low';confText='Низкая'}
+  const nearest=selected.slice(0,5);
+  document.getElementById('calcResult').innerHTML=`
+    <div class="result">
+      <div class="resultBox">
+        <div class="note">Рекомендуемый Y без поправки станка</div>
+        <div class="bigY">${fmt(estimate,2)}</div>
+        <div class="note">${esc(method)}</div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:15px 0">
+        <div class="note">Поправка станка «${esc(machine.name)}»</div>
+        <div style="font-size:22px;font-weight:700">${correction>=0?'+':''}${fmt(correction,2)}</div>
+        <div class="note">Итоговое значение для ввода на станке</div>
+        <div class="bigY">${fmt(finalY,2)}</div>
+      </div>
+      <div class="resultBox">
+        <div><span class="badge ${confidence}">Доверие: ${confText}</span></div>
+        <p><b>Параметры запроса:</b><br>
+        ${esc(p.material)}, ${fmt(p.thickness,2)} мм, ${grainName(p.grain)}, V=${fmt(p.v,1)} мм, длина ${fmt(p.length,0)} мм, угол ${fmt(p.angle,1)}°.</p>
+        <p><b>Использовано испытаний:</b> ${selected.length}; точных по параметрам: ${exact}.</p>
+        ${extrap?'<div class="warning">Требуемый угол находится за пределами измеренной области. Обязательно сделайте контрольный гиб.</div>':'<div class="info">Значение получено внутри диапазона реальных испытаний или по локальной интерполяции.</div>'}
+        <p class="note">После фактического гиба внесите Y и полученный угол во вкладке «Испытания». База будет становиться точнее.</p>
+      </div>
+    </div>
+    <h3 style="margin-bottom:5px">Ближайшие реальные испытания</h3>
+    <table><thead><tr><th>Дата</th><th>Y</th><th>Полученный угол</th><th>Цель</th><th>Толщина</th><th>V</th><th>Длина</th></tr></thead>
+    <tbody>${nearest.map(t=>`<tr><td>${esc(t.date)}</td><td>${fmt(t.y,2)}</td><td>${fmt(t.actual,2)}°</td><td>${fmt(t.target,1)}°</td><td>${fmt(t.thickness,2)}</td><td>${fmt(t.v,1)}</td><td>${fmt(t.length,0)}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function addTest(){
+  const t={
+    id:uid(),date:document.getElementById('tDate').value||today(),
+    machine:document.getElementById('tMachine').value,
+    material:document.getElementById('tMaterial').value.trim(),
+    thickness:num(document.getElementById('tThickness').value),
+    grain:document.getElementById('tGrain').value,
+    v:num(document.getElementById('tV').value),
+    length:num(document.getElementById('tLength').value),
+    target:num(document.getElementById('tTarget').value),
+    y:num(document.getElementById('tY').value),
+    actual:num(document.getElementById('tActual').value),
+    note:document.getElementById('tNote').value.trim()
+  };
+  if(!t.machine||!t.material||!Number.isFinite(t.thickness)||!Number.isFinite(t.v)||!Number.isFinite(t.length)||!Number.isFinite(t.target)||!Number.isFinite(t.y)||!Number.isFinite(t.actual)){
+    alert('Заполните все обязательные поля.');return;
+  }
+  db.tests.push(t); save(); clearTestForm(false);
+  alert('Испытание сохранено в базу.');
+}
+function clearTestForm(reset=true){
+  if(reset){
+    ['tY','tActual','tNote'].forEach(id=>document.getElementById(id).value='');
+  }
+}
+function renderTests(){
+  const fm=document.getElementById('fMachine')?.value||'', mat=(document.getElementById('fMaterial')?.value||'').trim().toLowerCase();
+  const th=document.getElementById('fThickness')?.value;
+  const arr=db.tests.filter(t=>(!fm||t.machine===fm)&&(!mat||t.material.toLowerCase().includes(mat))&&(!th||Math.abs(t.thickness-num(th))<0.001));
+  if(!arr.length){document.getElementById('testsTable').innerHTML='<div class="empty">Испытаний пока нет.</div>';return}
+  document.getElementById('testsTable').innerHTML=`<table><thead><tr><th>Дата</th><th>Станок</th><th>Материал</th><th>Толщ.</th><th>Волокна</th><th>V</th><th>Длина</th><th>Цель</th><th>Y</th><th>Факт. угол</th><th>Комментарий</th><th></th></tr></thead><tbody>
+  ${arr.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t=>`<tr>
+  <td>${esc(t.date)}</td><td>${esc(getMachine(t.machine)?.name||'?')}</td><td>${esc(t.material)}</td><td>${fmt(t.thickness,2)}</td><td>${grainName(t.grain)}</td><td>${fmt(t.v,1)}</td><td>${fmt(t.length,0)}</td><td>${fmt(t.target,1)}°</td><td><b>${fmt(t.y,2)}</b></td><td>${fmt(t.actual,2)}°</td><td>${esc(t.note)}</td>
+  <td><button class="danger small" onclick="deleteTest('${t.id}')">Удалить</button></td></tr>`).join('')}</tbody></table>`;
+}
+function deleteTest(id){if(confirm('Удалить испытание?')){db.tests=db.tests.filter(t=>t.id!==id);save()}}
+function addMachine(){
+  const name=document.getElementById('mName').value.trim();
+  if(!name){alert('Введите название станка.');return}
+  db.machines.push({id:uid(),name,unit:document.getElementById('mUnit').value,correction:0,calHistory:[]});
+  document.getElementById('mName').value='';save();
+}
+function renderMachines(){
+  const el=document.getElementById('machinesTable');
+  el.innerHTML=`<table><thead><tr><th>Станок</th><th>Единица Y</th><th>Поправка Y</th><th>Испытаний</th><th></th></tr></thead><tbody>
+  ${db.machines.map(m=>`<tr><td>${esc(m.name)}</td><td>${m.unit==='mm'?'мм':'условные единицы'}</td><td>${m.correction>=0?'+':''}${fmt(m.correction,2)}</td><td>${db.tests.filter(t=>t.machine===m.id).length}</td><td>${db.machines.length>1?`<button class="danger small" onclick="deleteMachine('${m.id}')">Удалить</button>`:''}</td></tr>`).join('')}</tbody></table>`;
+}
+function deleteMachine(id){
+  if(db.machines.length<=1){alert('Должен остаться хотя бы один станок.');return}
+  if(db.tests.some(t=>t.machine===id)){alert('Сначала удалите/перенесите испытания этого станка.');return}
+  db.machines=db.machines.filter(m=>m.id!==id);save();
+}
+function saveCalibration(){
+  const m=getMachine(document.getElementById('calMachine').value);
+  if(!m)return;
+  const c=num(document.getElementById('calCorrection').value);
+  if(!Number.isFinite(c)){alert('Введите поправку.');return}
+  m.correction=c;
+  m.calHistory=m.calHistory||[];
+  m.calHistory.push({date:today(),correction:c,note:document.getElementById('calNote').value.trim()});
+  save();alert('Поправка сохранена.');
+}
+function renderCalibration(){
+  const m=getMachine(document.getElementById('calMachine')?.value);
+  if(!m)return;
+  document.getElementById('calCorrection').value=m.correction||0;
+  const h=(m.calHistory||[]).slice().reverse();
+  document.getElementById('calHistory').innerHTML=h.length?`<h3>История поправок</h3><table><thead><tr><th>Дата</th><th>Поправка</th><th>Комментарий</th></tr></thead><tbody>${h.map(x=>`<tr><td>${esc(x.date)}</td><td>${x.correction>=0?'+':''}${fmt(x.correction,2)}</td><td>${esc(x.note)}</td></tr>`).join('')}</tbody></table>`:'<div class="empty">Истории пока нет.</div>';
+}
+document.getElementById('calMachine').addEventListener('change',renderCalibration);
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(db,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='bend_y_database_'+today()+'.json';a.click();URL.revokeObjectURL(a.href);
+}
+function importData(e){
+  const file=e.target.files[0];if(!file)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const x=JSON.parse(r.result);
+      if(!Array.isArray(x.machines)||!Array.isArray(x.tests))throw new Error();
+      db=x;save();alert('База успешно импортирована.');
+    }catch(err){alert('Неверный JSON-файл базы.')}
+    e.target.value='';
+  };r.readAsText(file);
+}
+function loadDemoData(){
+  const m=db.machines[0]||{id:'m1',name:'Листогиб №1',unit:'mm',correction:0,calHistory:[]};
+  if(!db.machines.includes(m))db.machines=[m];
+  const base=[
+    [92.4,93.0],[92.8,92.0],[93.2,91.0],[93.6,90.2],[93.8,89.7],[94.1,89.0]
+  ];
+  base.forEach(([y,a],i)=>db.tests.push({
+    id:uid(),date:today(),machine:m.id,material:'Ст3',thickness:1.5,grain:'along',v:10,length:300,target:90,y,actual:a,note:'Демо-испытание '+(i+1)
+  }));
+  save();alert('Добавлены демонстрационные данные. Это НЕ производственные значения — замените их реальными испытаниями.');
+}
+function fillExample(){
+  document.getElementById('cMaterial').value='Ст3';
+  document.getElementById('cThickness').value=1.5;
+  document.getElementById('cGrain').value='along';
+  document.getElementById('cV').value=10;
+  document.getElementById('cLength').value=300;
+  document.getElementById('cAngle').value=90;
+  if(!db.tests.length)loadDemoData();
+  else calculate();
+}
+function clearAll(){
+  if(!confirm('Удалить ВСЕ испытания, станки и калибровки? Это действие нельзя отменить без резервной копии.'))return;
+  db={machines:[{id:'m1',name:'Листогиб №1',unit:'mm',correction:0,calHistory:[]}],tests:[]};save();
+}
+document.getElementById('tDate').value=today();
+
+// v5.0: предзаполнение полей «Расчёт Y» из URL-параметров
+// (?material=&thickness=&v=&length=&angle=) — кнопка «Калькулятор Y гиба»
+// в основном приложении открывает калькулятор с параметрами текущего
+// металла/толщины/матрицы/ширины заготовки. ДО начального refreshAll().
+(function prefillFromURL(){
+  function dec(v){
+    if(v===null||v==='')return '';
+    try{return decodeURIComponent(v)}catch(e){return v}
+  }
+  function setVal(id,val){if(val!=='')document.getElementById(id).value=val}
+  try{
+    const q=new URLSearchParams(location.search);
+    setVal('cMaterial',dec(q.get('material')));
+    setVal('cThickness',dec(q.get('thickness')));
+    setVal('cV',dec(q.get('v')));
+    setVal('cLength',dec(q.get('length')));
+    setVal('cAngle',dec(q.get('angle')));
+  }catch(e){}
+})();
+
+// v5.0: подсказка о минимальной полке гиба для выбранной матрицы V —
+// грубое ориентирование: мин. полка ≈ 0.67·V, рекомендуемая V ≈ 8·t.
+function updateMinFlangeHint(){
+  const el=document.getElementById('minFlangeInfo'); if(!el)return;
+  try{
+    const V=num(document.getElementById('cV').value);
+    const th=num(document.getElementById('cThickness').value);
+    if(!Number.isFinite(V)||V<=0){el.innerHTML='';return}
+    const minFlange=0.67*V;
+    let txt='Мин. полка гиба для V='+V+' мм: ≈ '+minFlange.toFixed(1)+' мм';
+    if(Number.isFinite(th)&&th>0){
+      const recV=8*th;
+      txt+=' • Рекомендуемая V для t='+th+' мм: ≈ '+recV.toFixed(1)+' мм';
+    }
+    txt+=' (ориентировочно)';
+    el.innerHTML=txt;
+  }catch(e){el.innerHTML=''}
+}
+['cThickness','cV'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el){el.addEventListener('input',updateMinFlangeHint);el.addEventListener('change',updateMinFlangeHint)}
+});
+updateMinFlangeHint();
+
+load();refreshAll();
+</script>
+</body>
+</html>
