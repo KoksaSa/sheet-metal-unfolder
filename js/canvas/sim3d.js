@@ -43,6 +43,19 @@ function open3DSimModal() {
     resize3DSimCanvas();
     draw3DSimulation();
   });
+  // v5.2: WebGL-рендер — three.js подгружается лениво при первом
+  // открытии 3D-модалки (600 КБ не едут со старта страницы). Пока
+  // не загрузился — рисует прежний canvas-рендер; после загрузки
+  // кадр перерисовывается уже в WebGL. WebGL недоступен — навсегда
+  // остаётся canvas-рендер (fallback).
+  if (typeof three3DEnsure === 'function') {
+    three3DEnsure(function (ok) {
+      if (ok && sim3dModalOpen) {
+        resize3DSimCanvas();
+        draw3DSimulation();
+      }
+    });
+  }
   // Setup events
   setup3DSimEvents();
 }
@@ -73,6 +86,10 @@ function resize3DSimCanvas() {
   cv.height = sim3dH * dpr;
   cv.style.width = sim3dW + 'px';
   cv.style.height = sim3dH + 'px';
+  // v5.2: синхронный ресайз WebGL-канваса (three.js)
+  if (typeof three3DResize === 'function' && typeof three3DIsActive === 'function' && three3DIsActive()) {
+    three3DResize(sim3dW, sim3dH);
+  }
 }
 
 // 3D-проекция для симуляции (отдельные углы/зум от 3D-превью).
@@ -94,6 +111,51 @@ function project3DSim(x, y, z, cx, cy) {
   };
 }
 
+// v5.2: вычисление позиции упора для 3D-симуляции (мировые координаты
+// + текст метки). Раньше — инлайн-IIFE в draw3DSimulation; вынесено, чтобы
+// использовать и в canvas-рендере (проекция граней), и в WebGL-рендере
+// (позиция меша + метка через камеру). Логика 1:1 с прежней (v4.7:
+// касание наружной поверхности заготовки; при анимации — отъезд назад).
+function compute3DStopperInfo(prof) {
+  const sw = 20, sh = 8;
+  function touchXOf(profile) {
+    if (typeof stopperTouchXThick !== 'function') return null;
+    return stopperTouchXThick(profile, { height: sh });
+  }
+  let stopperRightX;
+  if (sim3dAnimRunning && sim3dStepIdx >= 0 && sim3dStepBends.length > 0) {
+    const sb = S.simBentMarkers, sR = S.simAnimRunning, sB = S.simAnimBendIdx, sP = S.simAnimProgress, sS = S.selectedBendIndex, sFX = S.simFlipX, sFY = S.simFlipY;
+    S.simBentMarkers = sim3dStepBends.slice(0, sim3dStepIdx);
+    S.simAnimRunning = false; S.simAnimBendIdx = -1; S.simAnimProgress = 0;
+    S.selectedBendIndex = sim3dStepBends[sim3dStepIdx];
+    const stepMetaPre = (S.bendStepMeta || {})[sim3dStepBends[sim3dStepIdx]];
+    if (stepMetaPre) { S.simFlipX = !!stepMetaPre.flipX; S.simFlipY = !!stepMetaPre.flipY; }
+    const preProf = computeAccumulatedProfile({ bendIdx: sim3dStepBends[sim3dStepIdx], progress: 0, animating: false });
+    S.simBentMarkers = sb; S.simAnimRunning = sR; S.simAnimBendIdx = sB; S.simAnimProgress = sP; S.selectedBendIndex = sS; S.simFlipX = sFX; S.simFlipY = sFY;
+    const rest = touchXOf(preProf);
+    const p = Math.max(0, Math.min(1, sim3dAnimProgress || 0));
+    const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+    stopperRightX = (rest !== null ? rest : 0) - 100 * ease;
+  } else {
+    const tx = touchXOf(prof);
+    stopperRightX = (tx !== null) ? tx : 0;
+  }
+  let stopperCenterX = stopperRightX - sw / 2;
+  if (stopperCenterX > 0) stopperCenterX = 0;
+  const stopperRight = stopperCenterX + sw / 2;
+  return {
+    sw: sw, sh: sh,
+    rightX: stopperRightX,
+    centerX: stopperCenterX,
+    left: stopperCenterX - sw / 2,
+    right: stopperRight,
+    top: sh / 2,
+    bottom: -sh / 2,
+    labelWorld: { x: stopperCenterX, y: sh / 2, z: 0 },
+    text: t('stopperWord') + ' ' + Math.abs(stopperRight).toFixed(1) + ' ' + t('mm')
+  };
+}
+
 // Главная функция 3D-симуляции: рисует матрицу, пуансон, упор и контур
 // заготовки (из computeAccumulatedProfile) в 3D, который можно вращать.
 function draw3DSimulation() {
@@ -103,11 +165,34 @@ function draw3DSimulation() {
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const isDark = S.isDark;
-
-  ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
-  ctx.fillRect(0, 0, sim3dW, sim3dH);
+  // v5.2: WebGL-путь (three.js) — сцена рисуется в WebGL-канвас позади
+  // (#sim3d-gl-wrap), а этот 2D-канвас становится прозрачным оверлеем
+  // (метка упора, HUD ориентации, кнопки шагов, подсказка). Пока three.js
+  // не инициализирован/недоступен — прежний canvas-рендер без изменений.
+  const useThree = (typeof three3DIsActive === 'function') && three3DIsActive();
+  if (useThree) {
+    ctx.clearRect(0, 0, sim3dW, sim3dH);
+  } else {
+    ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
+    ctx.fillRect(0, 0, sim3dW, sim3dH);
+  }
+  // (v5.2) толщина/ширина/инструменты нужны и для пустого профиля (WebGL)
+  const T0 = S.metal.thickness || 1;
+  const W0 = S.metal.width || 100;
+  const hw0 = W0 / 2;
+  const die0 = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
+  const punch0 = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
 
   if (!S.unfoldResult || S.points.length < 2) {
+    // v5.2: в WebGL-режиме матрица/пуансон/пол видны и без профиля
+    if (useThree && typeof renderThree3DSim === 'function') {
+      renderThree3DSim({
+        prof: null, T: T0, hw: hw0, die: die0, punch: punch0,
+        punchTipY: (typeof punchTipWorldY === 'function') ? punchTipWorldY(null) : 0,
+        faceSignSim: 1, stopperInfo: null, isDark: isDark,
+        usedFaceSide: S.simFaceSide || 'up', usedFlipX: !!S.simFlipX, usedFlipY: !!S.simFlipY
+      });
+    }
     ctx.fillStyle = isDark ? '#999' : '#666';
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
@@ -359,49 +444,9 @@ function draw3DSimulation() {
       faces.push({ pts:[pp[3],pp[2],pp[6],pp[7]], z:Math.max(pp[3].z,pp[2].z,pp[6].z,pp[7].z), fill:isDark?'#6b7280':'#9ca3af', stroke:isDark?'#9ca3af':'#4b5563' });
     }
   }
-  // === УПОР (серый) — позиция из профиля ШАГА ===
-  let stopperLabelInfo = null;
-  (function draw3DStopper() {
-    const sw = 20, sh = 8;
-    // v4.7: касание по НАРУЖНОЙ поверхности заготовки — единая функция
-    // stopperTouchXThick (учёт толщины металла, клип по высоте упора),
-    // совпадает с 2D-упором и stopperDist в чертеже.
-    function touchXOf(profile) {
-      if (typeof stopperTouchXThick !== 'function') return null;
-      return stopperTouchXThick(profile, { height: sh });
-    }
-    let stopperRightX;
-    if (sim3dAnimRunning && sim3dStepIdx >= 0 && sim3dStepBends.length > 0) {
-      const sb = S.simBentMarkers, sR = S.simAnimRunning, sB = S.simAnimBendIdx, sP = S.simAnimProgress, sS = S.selectedBendIndex, sFX = S.simFlipX, sFY = S.simFlipY;
-      S.simBentMarkers = sim3dStepBends.slice(0, sim3dStepIdx);
-      S.simAnimRunning = false; S.simAnimBendIdx = -1; S.simAnimProgress = 0;
-      S.selectedBendIndex = sim3dStepBends[sim3dStepIdx];
-      const stepMetaPre = (S.bendStepMeta || {})[sim3dStepBends[sim3dStepIdx]];
-      if (stepMetaPre) { S.simFlipX = !!stepMetaPre.flipX; S.simFlipY = !!stepMetaPre.flipY; }
-      const preProf = computeAccumulatedProfile({ bendIdx: sim3dStepBends[sim3dStepIdx], progress: 0, animating: false });
-      S.simBentMarkers = sb; S.simAnimRunning = sR; S.simAnimBendIdx = sB; S.simAnimProgress = sP; S.selectedBendIndex = sS; S.simFlipX = sFX; S.simFlipY = sFY;
-      const rest = touchXOf(preProf);
-      const p = Math.max(0, Math.min(1, sim3dAnimProgress || 0));
-      const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
-      stopperRightX = (rest !== null ? rest : 0) - 100 * ease;
-    } else {
-      const tx = touchXOf(prof);
-      stopperRightX = (tx !== null) ? tx : 0;
-    }
-    let stopperCenterX = stopperRightX - sw / 2;
-    if (stopperCenterX > 0) stopperCenterX = 0;
-    const stopperLeft = stopperCenterX - sw / 2;
-    const stopperRight = stopperCenterX + sw / 2;
-    const stopperTop = sh / 2;
-    const stopperBottom = -sh / 2;
-    const sc = [[stopperLeft, stopperBottom, -hw], [stopperRight, stopperBottom, -hw], [stopperRight, stopperTop, -hw], [stopperLeft, stopperTop, -hw],
-      [stopperLeft, stopperBottom, hw], [stopperRight, stopperBottom, hw], [stopperRight, stopperTop, hw], [stopperLeft, stopperTop, hw]];
-    const sp = sc.map(p => project3DSim(p[0] + toolCx, p[1] + toolCy, p[2], panX, panY));
-    [[sp[0], sp[1], sp[2], sp[3]], [sp[4], sp[5], sp[6], sp[7]], [sp[0], sp[4], sp[7], sp[3]], [sp[1], sp[5], sp[6], sp[2]], [sp[0], sp[1], sp[5], sp[4]], [sp[3], sp[2], sp[6], sp[7]]].forEach(s =>
-      faces.push({ pts: s, z: Math.max.apply(null, s.map(p => p.z)), fill: isDark ? '#6b7280' : '#9ca3af', stroke: isDark ? '#9ca3af' : '#4b5563' }));
-    const labelC = project3DSim(stopperCenterX + toolCx, stopperTop + toolCy, 0, panX, panY);
-    stopperLabelInfo = { x: labelC.x, y: labelC.y, text: t('stopperWord') + ' ' + Math.abs(stopperRight).toFixed(1) + ' ' + t('mm') };
-  })();
+  // === УПОР — v5.2: вычисление вынесено в compute3DStopperInfo
+  // (мировые координаты + текст) — общий для canvas- и WebGL-рендера ===
+  const stopperInfo = compute3DStopperInfo(prof);
   // === МЕТАЛЛ (серое тело, синяя лицевая сторона) ===
   // Чётность физического переворота для ЛИЦА должна совпадать с
   // ОТОБРАЖАЕМОЙ геометрией (v4.2): в режиме шагов геометрия содержит
@@ -419,6 +464,41 @@ function draw3DSimulation() {
   const faceSignSim = ((usedFaceSide||'up')==='up'?1:-1)
     * (usedFlipX?-1:1)
     * (faceParity3d ? -1 : 1);
+
+  // v5.2: WebGL-ветка — сцена в three.js (перспективная камера, PBR-металл,
+  // мягкие тени, сглаживание, ACES-тонмаппинг); оверлей (метка упора/HUD/
+  // кнопки) рисуется на этом же 2D-канвасе поверх. Вся логика шагов,
+  // анимации, упора, лицевой стороны — общая с canvas-путём.
+  if (useThree && typeof renderThree3DSim === 'function') {
+    const rendered3D = renderThree3DSim({
+      prof: prof, T: T, hw: hw, die: die, punch: punch,
+      punchTipY: punchTipY, faceSignSim: faceSignSim,
+      stopperInfo: stopperInfo, isDark: isDark,
+      usedFaceSide: usedFaceSide, usedFlipX: usedFlipX, usedFlipY: usedFlipY
+    });
+    if (rendered3D) {
+      let stopperLabel3D = null;
+      if (stopperInfo) {
+        const scr = (typeof three3DProjectToScreen === 'function') ? three3DProjectToScreen(stopperInfo.labelWorld) : null;
+        if (scr) stopperLabel3D = { x: scr.x, y: scr.y, text: stopperInfo.text };
+      }
+      draw3DSimOverlay(ctx, stopperLabel3D, usedFaceSide, usedFlipX, usedFlipY);
+      return;
+    }
+    // three.js внезапно недоступен — продолжаем canvas-путём ниже
+  }
+
+  // === УПОР (canvas-путь): грани из мировых координат stopperInfo ===
+  let stopperLabelInfo = null;
+  if (stopperInfo) {
+    const sc = [[stopperInfo.left, stopperInfo.bottom, -hw], [stopperInfo.right, stopperInfo.bottom, -hw], [stopperInfo.right, stopperInfo.top, -hw], [stopperInfo.left, stopperInfo.top, -hw],
+      [stopperInfo.left, stopperInfo.bottom, hw], [stopperInfo.right, stopperInfo.bottom, hw], [stopperInfo.right, stopperInfo.top, hw], [stopperInfo.left, stopperInfo.top, hw]];
+    const sp = sc.map(p => project3DSim(p[0] + toolCx, p[1] + toolCy, p[2], panX, panY));
+    [[sp[0], sp[1], sp[2], sp[3]], [sp[4], sp[5], sp[6], sp[7]], [sp[0], sp[4], sp[7], sp[3]], [sp[1], sp[5], sp[6], sp[2]], [sp[0], sp[1], sp[5], sp[4]], [sp[3], sp[2], sp[6], sp[7]]].forEach(s =>
+      faces.push({ pts: s, z: Math.max.apply(null, s.map(p => p.z)), fill: isDark ? '#6b7280' : '#9ca3af', stroke: isDark ? '#9ca3af' : '#4b5563' }));
+    const labelC = project3DSim(stopperInfo.centerX + toolCx, stopperInfo.top + toolCy, 0, panX, panY);
+    stopperLabelInfo = { x: labelC.x, y: labelC.y, text: stopperInfo.text };
+  }
   for (let i = 0; i < prof.pts.length - 1; i++) {
     const dx = prof.pts[i+1].x - prof.pts[i].x, dy = prof.pts[i+1].y - prof.pts[i].y;
     const len = Math.hypot(dx, dy);
@@ -483,6 +563,18 @@ function draw3DSimulation() {
     return aAvg - bAvg;
   });
   faces.forEach(f => { ctx.beginPath(); ctx.moveTo(f.pts[0].x,f.pts[0].y); for(let k=1;k<f.pts.length;k++)ctx.lineTo(f.pts[k].x,f.pts[k].y); ctx.closePath(); ctx.fillStyle=f.fill; ctx.fill(); ctx.strokeStyle=f.stroke; ctx.lineWidth=1; ctx.stroke(); });
+  // v5.2: метка упора/HUD ориентации/кнопки шагов — общий оверлей
+  // (canvas- и WebGL-путь), см. draw3DSimOverlay ниже.
+  draw3DSimOverlay(ctx, stopperLabelInfo, usedFaceSide, usedFlipX, usedFlipY);
+}
+
+// v5.2: оверлей 3D-симуляции (метка упора, HUD ориентации, кнопки
+// шагов, подсказка) — общий для canvas- и WebGL-рендера. Раньше был
+// хвостом draw3DSimulation; вынесен, чтобы sim3dRenderView мог
+// перерисовывать оверлей при движении камеры в WebGL-режиме без
+// пересчёта профиля.
+function draw3DSimOverlay(ctx, stopperLabelInfo, usedFaceSide, usedFlipX, usedFlipY) {
+  const isDark = S.isDark;
   // Метка расстояния упора (поверх всех граней)
   if (stopperLabelInfo) {
     ctx.save();
@@ -565,6 +657,33 @@ function draw3DSimulation() {
     ? t('sim3dHintTouch')
     : t('sim3dHintMouse');
   ctx.fillText(hint, 10, 10);
+}
+
+// v5.2: перерисовка ТОЛЬКО вида (вращение/пан/зум) — в WebGL-режиме без
+// пересчёта профиля: обновляется камера three.js + render + оверлей
+// (метка упора проецируется через камеру, кнопки/HUD перерисовываются).
+// В canvas-режиме — обычная полная отрисовка draw3DSimulation.
+function sim3dRenderView() {
+  if ((typeof three3DIsActive === 'function') && three3DIsActive() &&
+      (typeof three3DRenderFrame === 'function') && three3DRenderFrame()) {
+    const cv = document.getElementById('sim3d-canvas');
+    if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, sim3dW, sim3dH);
+    // пустой профиль → полный кадр (сообщение «нарисуйте профиль»)
+    if (!S.unfoldResult || S.points.length < 2) { draw3DSimulation(); return; }
+    let stopperLabelInfo = null;
+    const o = (typeof three3DGetOverlay === 'function') ? three3DGetOverlay() : null;
+    if (o && o.labelWorld) {
+      const scr = (typeof three3DProjectToScreen === 'function') ? three3DProjectToScreen(o.labelWorld) : null;
+      if (scr) stopperLabelInfo = { x: scr.x, y: scr.y, text: o.labelText };
+    }
+    draw3DSimOverlay(ctx, stopperLabelInfo, o ? (o.faceSide || 'up') : 'up', !!(o && o.flipX), !!(o && o.flipY));
+    return;
+  }
+  draw3DSimulation();
 }
 
 // ==================== АНИМАЦИЯ ШАГОВ ====================
@@ -668,10 +787,10 @@ function setup3DSimEvents() {
   cv.addEventListener('contextmenu', e => e.preventDefault());
   window.addEventListener('mouseup', () => { if (isPanning3DSim) { isPanning3DSim = false; cv.style.cursor = 'grab'; } if (isDragging3DSim) { isDragging3DSim = false; cv.style.cursor = 'grab'; } });
   window.addEventListener('mousemove', e => {
-    if (isPanning3DSim && sim3dPanStart) { sim3dPanX = sim3dPanStart.panX + (e.clientX-sim3dPanStart.x); sim3dPanY = sim3dPanStart.panY + (e.clientY-sim3dPanStart.y); draw3DSimulation(); }
-    else if (isDragging3DSim && sim3dDragStart) { sim3dRotY = sim3dDragStart.rotY + (e.clientX-sim3dDragStart.x)*0.01; sim3dRotX = Math.max(-Math.PI/2+0.1, Math.min(Math.PI/2-0.1, sim3dDragStart.rotX + (e.clientY-sim3dDragStart.y)*0.01)); draw3DSimulation(); }
+    if (isPanning3DSim && sim3dPanStart) { sim3dPanX = sim3dPanStart.panX + (e.clientX-sim3dPanStart.x); sim3dPanY = sim3dPanStart.panY + (e.clientY-sim3dPanStart.y); sim3dRenderView(); }
+    else if (isDragging3DSim && sim3dDragStart) { sim3dRotY = sim3dDragStart.rotY + (e.clientX-sim3dDragStart.x)*0.01; sim3dRotX = Math.max(-Math.PI/2+0.1, Math.min(Math.PI/2-0.1, sim3dDragStart.rotX + (e.clientY-sim3dDragStart.y)*0.01)); sim3dRenderView(); }
   });
-  cv.addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY < 0 ? 1.15 : 1/1.15; sim3dZoom = Math.max(0.1, Math.min(10, sim3dZoom*f)); sim3dUserZoomed = true; draw3DSimulation(); }, { passive: false });
+  cv.addEventListener('wheel', e => { e.preventDefault(); const f = e.deltaY < 0 ? 1.15 : 1/1.15; sim3dZoom = Math.max(0.1, Math.min(10, sim3dZoom*f)); sim3dUserZoomed = true; sim3dRenderView(); }, { passive: false });
   cv.style.cursor = 'grab';
   // === TOUCH SUPPORT (планшеты/телефоны) ===
   let touchDragStart = null, pinchStart = null;
@@ -706,7 +825,7 @@ function setup3DSimEvents() {
       const t = e.touches[0];
       sim3dRotY = touchDragStart.rotY + (t.clientX - touchDragStart.x) * 0.01;
       sim3dRotX = Math.max(-Math.PI/2+0.1, Math.min(Math.PI/2-0.1, touchDragStart.rotX + (t.clientY - touchDragStart.y) * 0.01));
-      draw3DSimulation();
+      sim3dRenderView();
     } else if (e.touches.length === 2 && pinchStart) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -720,7 +839,7 @@ function setup3DSimEvents() {
       const cyNow = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       sim3dPanX = pinchStart.panX + (cxNow - pinchStart.cx);
       sim3dPanY = pinchStart.panY + (cyNow - pinchStart.cy);
-      draw3DSimulation();
+      sim3dRenderView();
     }
   }, { passive: false });
   cv.addEventListener('touchend', e => {

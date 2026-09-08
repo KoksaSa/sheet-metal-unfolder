@@ -21,6 +21,26 @@ function triggerProfileDXFImport() {
   input.click();
 }
 
+// v5.1: «Открыть на холсте» (кнопка btn-open-canvas рядом с «Импорт
+// профиля DXF») — показать ТЕКУЩИЙ профиль (нарисованный / пресет /
+// импортированный DXF) на холсте сразу: выход из режима симуляции в
+// режим рисования + авто-подгонка масштаба/центра под деталь.
+function openProfileOnCanvas() {
+  if (!S.points || S.points.length < 2) {
+    toast(t('openOnCanvasEmpty'), 'error');
+    return;
+  }
+  // Останавливаем гибочную анимацию и выходим из симуляции —
+  // холст переключается на профиль в режиме рисования
+  if (S.simAnimRunning && typeof stopAnimation === 'function') stopAnimation();
+  S.showToolsOnCanvas = false;
+  S.simMode = false;
+  // Авто-подгонка вьюпорта: деталь целиком в видимой области
+  if (typeof fitProfileToView === 'function') fitProfileToView();
+  renderAll();
+  toast(t('openOnCanvasOk'), 'success');
+}
+
 // Обработчик onchange скрытого инпута
 function importProfileDXF(event) {
   const target = event && event.target;
@@ -121,6 +141,10 @@ function importProfileDXFText(text) {
     // Новый профиль — старая последовательность гибов бессмысленна
     if (typeof resetSimulationState === 'function') resetSimulationState();
     if (S.autoUnfold) maybeAutoUnfold();
+    // v5.1: профиль СРАЗУ виден на холсте — подгоняем масштаб/центр
+    // под импортированный контур (деталь может быть крупнее/мельче
+    // текущего вьюпорта и оказаться за пределами экрана)
+    if (typeof fitProfileToView === 'function') fitProfileToView();
     ufManualZoom = null;
     view3dUserZoomed = false;
     renderAll();

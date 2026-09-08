@@ -3,7 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bend Y Calculator — база калибровки листогиба</title>
+<title>Калькулятор Y листогиба — ось Y для гиба 90°, калибровка станка</title>
+<meta name="description" content="Эмпирический калькулятор оси Y листогибочного пресса: по материалу, толщине, ширине заготовки и V-матрице — какое положение Y выставить на станке для гиба 90°. База реальных испытаний, калибровка станка, рекомендуемое Y для любого угла.">
+<meta name="keywords" content="ось Y листогиба, калькулятор Y листогиба, гиб 90 градусов, калибровка листогиба, air bending, листогибочный пресс, глубина ползуна, минимальная полка гиба">
+<meta name="theme-color" content="#16a34a">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sheet Metal Unfolder">
+<meta property="og:locale" content="ru_RU">
+<meta property="og:title" content="Калькулятор Y листогиба — ось Y для гиба 90°">
+<meta property="og:description" content="База реальных испытаний станка: какое положение Y задать для угла 90° по материалу, толщине и матрице.">
+<meta property="og:image" content="og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Калькулятор Y листогиба — ось Y для гиба 90°">
+<meta name="twitter:description" content="Эмпирическая калибровка листогиба: Y для угла 90° по материалу и толщине.">
+<meta name="twitter:image" content="og-image.png">
+<script>
+/* SEO: абсолютные og:image/twitter:image + canonical по фактическому адресу */
+(function(){
+  try {
+    var base = new URL('.', location.href).href;
+    document.querySelectorAll('meta[property="og:image"],meta[name="twitter:image"]').forEach(function(m){
+      if (m.content) m.content = new URL(m.content, base).href;
+    });
+    var canon = new URL(location.pathname, location.origin).href;
+    var l = document.createElement('link'); l.rel = 'canonical'; l.href = canon;
+    document.head.appendChild(l);
+    var u = document.createElement('meta'); u.setAttribute('property','og:url'); u.content = canon;
+    document.head.appendChild(u);
+  } catch(e) {}
+})();
+</script>
 <style>
 :root{
   --bg:#f3f5f7;--panel:#fff;--text:#1d252c;--muted:#68737d;

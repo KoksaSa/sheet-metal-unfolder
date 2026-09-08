@@ -2,7 +2,7 @@
 const STRINGS = {
   ru: {
     title: 'Развёртка листового металла',
-    subtitle: 'Sheet Metal Unfolder v5.0',
+    subtitle: 'Sheet Metal Unfolder v5.3',
     unfold: 'Развернуть',
     downloadDxf: 'Скачать dxf развертки',
     downloadSvg: 'Скачать SVG',
@@ -20,7 +20,7 @@ const STRINGS = {
     areaLabel: 'Площадь',
     areaSuffix: ' мм²',
     footerControls: 'Координаты в миллиметрах • Масштаб: колёсико мыши • Панорама: Alt + ЛКМ',
-    footerVersion: 'Развёртка листового металла v5.0',
+    footerVersion: 'Развёртка листового металла v5.3',
     paramsSection: 'ПАРАМЕТРЫ',
     bendWord1: 'гиб',
     bendWord2: 'гиба',
@@ -256,6 +256,11 @@ const STRINGS = {
     dxfProfileUnitsIn: 'Единицы DXF — дюймы, пересчитано в мм',
     dxfProfileArcsSkipped: 'Дуги/окружности в DXF пропущены',
     dxfProfileCollinear: 'Коллинеарные точки объединены',
+    // v5.1: «Открыть на холсте» — показать профиль на холсте сразу
+    openOnCanvas: 'Открыть на холсте',
+    openOnCanvasHint: 'Показать профиль на холсте сразу — выход из симуляции и автомасштаб под деталь',
+    openOnCanvasOk: 'Профиль показан на холсте',
+    openOnCanvasEmpty: 'Профиль пуст — нарисуйте его или импортируйте DXF',
     // v4.7: размеры профиля — средняя линия
     centerLineNote: 'Размеры профиля — по СРЕДНЕЙ ЛИНИИ металла (нейтральный слой)',
     centerLineNoteShort: 'Размеры — по средней линии',
@@ -265,7 +270,7 @@ const STRINGS = {
   },
   en: {
     title: 'Sheet Metal Unfolder',
-    subtitle: 'Sheet Metal Unfolder v5.0',
+    subtitle: 'Sheet Metal Unfolder v5.3',
     unfold: 'Unfold',
     downloadDxf: 'Download flat pattern DXF',
     downloadSvg: 'Download SVG',
@@ -283,7 +288,7 @@ const STRINGS = {
     areaLabel: 'Area',
     areaSuffix: ' mm²',
     footerControls: 'Coordinates in mm \u2022 Zoom: mouse wheel \u2022 Pan: Alt + LMB',
-    footerVersion: 'Sheet Metal Unfolder v5.0',
+    footerVersion: 'Sheet Metal Unfolder v5.3',
     paramsSection: 'PARAMETERS',
     bendWord1: 'bend',
     bendWord2: 'bends',
@@ -519,6 +524,11 @@ const STRINGS = {
     dxfProfileUnitsIn: 'DXF units are inches — converted to mm',
     dxfProfileArcsSkipped: 'Arcs/circles in DXF skipped',
     dxfProfileCollinear: 'Collinear points merged',
+    // v5.1: "Open on canvas" — show the profile on the canvas right away
+    openOnCanvas: 'Open on canvas',
+    openOnCanvasHint: 'Show the profile on the canvas right away — leaves simulation and auto-fits the view',
+    openOnCanvasOk: 'Profile is now shown on the canvas',
+    openOnCanvasEmpty: 'Profile is empty — draw it or import a DXF first',
     // v4.7: profile dimensions — mid-line
     centerLineNote: 'Profile dimensions are along the sheet MID-LINE (neutral axis)',
     centerLineNoteShort: 'Dims — mid-line',

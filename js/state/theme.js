@@ -15,6 +15,10 @@ function toast(msg, type = 'success') {
 }
 
 // ==================== ТЕМА И ЯЗЫК ====================
+// SEO/a11y: синхронизируем <html lang> с активным языком интерфейса
+// (при загрузке и при переключении RU/EN)
+document.documentElement.lang = S.lang;
+
 function applyTheme() {
   document.documentElement.classList.toggle('dark', S.isDark);
   const sun = document.getElementById('icon-sun');
@@ -32,6 +36,7 @@ function toggleTheme() {
 function toggleLang() {
   S.lang = S.lang === 'ru' ? 'en' : 'ru';
   localStorage.setItem('sheet-metal-lang', S.lang);
+  document.documentElement.lang = S.lang;
   renderAll();
 }
 

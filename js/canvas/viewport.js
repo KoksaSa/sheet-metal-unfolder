@@ -38,6 +38,41 @@ function resizeDrawCanvas() {
   drawCanvas.style.height = canvasH + 'px';
 }
 
+// ==================== АВТО-ПОДГОНКА ВЬЮПОРТА (v5.1) ====================
+// Подогнать масштаб/центр холста рисования под текущий профиль:
+// профиль целиком попадает в видимую область (с полями). Нужно, чтобы
+// после импорта DXF (или «Открыть на холсте») деталь СРАЗУ была видна —
+// вьюпорт не привязан к размерам импортированного контура, и без
+// подгонки профиль может оказаться за пределами экрана.
+// @returns {boolean} true, если вьюпорт подогнан
+function fitProfileToView() {
+  if (!S.points || S.points.length < 2) return false;
+  const w = Math.max(60, canvasW || 400);
+  const h = Math.max(60, canvasH || 300);
+  // Габариты профиля в мировых координатах
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  S.points.forEach(p => {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  });
+  const spanX = Math.max(1e-6, maxX - minX);
+  const spanY = Math.max(1e-6, maxY - minY);
+  const pad = 70; // px свободного поля вокруг профиля
+  const scale = Math.max(0.1, Math.min(50, Math.min(
+    (w - pad * 2) / spanX,
+    (h - pad * 2) / spanY
+  )));
+  // Центр профиля → центр холста (w2c: cy = -wy*scale + offsetY)
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  S.viewport.scale = scale;
+  S.viewport.offsetX = w / 2 - cx * scale;
+  S.viewport.offsetY = h / 2 + cy * scale;
+  return true;
+}
+
 // Поиск сегмента рядом с курсором (для каймы/контекстного меню)
 function findNearSegment(cx, cy, threshold) {
   const thresh = threshold || 10;

@@ -3,12 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sheet Metal Unfolder v5.0</title>
+  <title>Калькулятор развёртки листового металла — профиль, гибка 2D/3D, DXF | Sheet Metal Unfolder v5.3</title>
+  <meta name="description" content="Онлайн-калькулятор развёрток деталей из листового металла: постройте профиль — получите плоскую заготовку с учётом толщины, радиуса гиба и K-фактора. Симуляция гибки в 2D и 3D, экспорт DXF, чертежи, каймы, калькулятор оси Y листогиба.">
+  <meta name="keywords" content="развёртка листового металла, калькулятор развёртки, развёртка онлайн, гибка листа, K-фактор, припуск на гиб, ось Y листогиба, листогибочный пресс, DXF, sheet metal unfold, flat pattern, bend allowance">
+  <meta name="theme-color" content="#16a34a">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <!-- Open Graph / Twitter (пути относительные — скрипт ниже делает их абсолютными для любого домена/подпапки) -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Sheet Metal Unfolder">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:title" content="Калькулятор развёртки листового металла — профиль, гибка 2D/3D, DXF">
+  <meta property="og:description" content="Постройте профиль детали — получите плоскую заготовку с учётом K-фактора и радиусов, симуляцию гибки 2D/3D, экспорт DXF и готовые чертежи.">
+  <meta property="og:image" content="og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Калькулятор развёртки листового металла — 2D/3D, DXF">
+  <meta name="twitter:description" content="Плоская заготовка с учётом K-фактора, симуляция гибки, экспорт DXF и чертежи.">
+  <meta name="twitter:image" content="og-image.png">
+  <script>
+  /* SEO: абсолютные og:image/twitter:image + canonical по фактическому адресу
+     (работает и на корневом домене, и в подпапке GitHub Pages, и локально) */
+  (function(){
+    try {
+      var base = new URL('.', location.href).href;
+      document.querySelectorAll('meta[property="og:image"],meta[name="twitter:image"]').forEach(function(m){
+        if (m.content) m.content = new URL(m.content, base).href;
+      });
+      var canon = new URL(location.pathname, location.origin).href;
+      var l = document.createElement('link'); l.rel = 'canonical'; l.href = canon;
+      document.head.appendChild(l);
+      var u = document.createElement('meta'); u.setAttribute('property','og:url'); u.content = canon;
+      document.head.appendChild(u);
+    } catch(e) {}
+  })();
+  </script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"WebApplication","name":"Sheet Metal Unfolder","alternateName":"Калькулятор развёртки листового металла","applicationCategory":"DesignApplication","operatingSystem":"Any (web browser)","inLanguage":["ru","en"],"offers":{"@type":"Offer","price":"0","priceCurrency":"RUB"},"description":"Онлайн-калькулятор развёрток листового металла: профиль детали → плоская заготовка с учётом K-фактора и радиуса гиба, 2D/3D-симуляция гибки, экспорт DXF, чертежи, калькулятор оси Y листогиба."}
+  </script>
   <link rel="stylesheet" href="css/tailwind.css">
   <link rel="stylesheet" href="css/styles.css">
-  <!-- Lucide icons — локальная копия (работает офлайн) -->
-  <script src="js/vendor/lucide.min.js"></script>
+  <!-- Lucide icons — локальная копия (работает офлайн); defer — не блокирует первую отрисовку -->
+  <script src="js/vendor/lucide.min.js" defer></script>
   <!-- Yandex.Metrika counter -->
   <script type="text/javascript">
   (function(m,e,t,r,i,k,a){
@@ -33,7 +67,7 @@
       </div>
       <div class="hidden sm:block">
         <h1 id="h-title" class="text-sm font-bold leading-tight tracking-tight"></h1>
-        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight font-medium">Sheet Metal Unfolder v5.0</p>
+        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight font-medium">Sheet Metal Unfolder v5.3</p>
       </div>
     </div>
     <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
@@ -98,8 +132,13 @@
           <div id="stats-container"></div>
           <!-- POINTS TABLE -->
           <div id="points-table-container"></div>
-          <!-- ИМПОРТ ПРОФИЛЯ DXF (v4.9: перенесён сюда из плиток шаблонов) -->
-          <button onclick="triggerProfileDXFImport()" title="" id="btn-dxf-profile" class="w-full text-xs h-8 gap-1.5 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-md flex items-center justify-center mt-2"><i data-lucide="file-up" class="h-3.5 w-3.5"></i><span data-i18n="importDxfProfile"></span></button>
+          <!-- ИМПОРТ ПРОФИЛЯ DXF (v4.9: перенесён сюда из плиток шаблонов).
+               v5.1: рядом — «Открыть на холсте»: показать профиль на холсте
+               сразу (выход из симуляции + автомасштаб под деталь). -->
+          <div class="grid grid-cols-2 gap-1.5 mt-2">
+            <button onclick="triggerProfileDXFImport()" title="" id="btn-dxf-profile" class="text-xs h-auto min-h-8 py-1 px-1 gap-1 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-md flex items-center justify-center text-center leading-tight"><i data-lucide="file-up" class="h-3.5 w-3.5 shrink-0"></i><span data-i18n="importDxfProfile"></span></button>
+            <button onclick="openProfileOnCanvas()" title="" id="btn-open-canvas" class="text-xs h-auto min-h-8 py-1 px-1 gap-1 border border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-md flex items-center justify-center text-center leading-tight"><i data-lucide="eye" class="h-3.5 w-3.5 shrink-0"></i><span data-i18n="openOnCanvas"></span></button>
+          </div>
           <!-- v4.8: «Загрузить деталь» — STEP-инструмент «Развёртка крестом»
                (step-v-gib.html): 3D-деталь → развёртка. Открывается в новой
                вкладке, текущий проект калькулятора не теряется. -->
@@ -186,6 +225,12 @@
         </div>
       </div>
       <div class="flex-1 relative" id="sim3d-modal-container">
+        <!-- v5.2: WebGL-канвас three.js (сцена: PBR-металл, тени, перспектива).
+             Подгружается лениво при первом открытии модалки; фон — градиент
+             (задаётся из sim3d-three.js). Поверх — прежний 2D-канвас-оверлей
+             (кнопки шагов, HUD, метка упора), он же принимает все события
+             (вращение ЛКМ / панорама ПКМ / зум). -->
+        <div id="sim3d-gl-wrap" class="absolute inset-0 overflow-hidden pointer-events-none"></div>
         <canvas id="sim3d-canvas" class="absolute inset-0 w-full h-full block"></canvas>
         <div class="absolute bottom-2 left-2 text-[10px] text-gray-500 dark:text-gray-400 font-mono bg-white/80 dark:bg-gray-900/80 px-1.5 rounded" id="sim3d-controls" data-i18n="dragToRotate"></div>
       </div>
@@ -195,8 +240,8 @@
   <!-- FOOTER -->
   <footer class="no-print border-t bg-white dark:bg-gray-800 px-4 py-1.5 flex items-center justify-between shrink-0">
     <p class="text-[10px] text-gray-500 dark:text-gray-400 hidden sm:block" id="footer-controls"></p>
-    <p class="text-[10px] text-gray-500 dark:text-gray-400 sm:hidden">v5.0</p>
-    <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Sheet Metal Unfolder v5.0</p>
+    <p class="text-[10px] text-gray-500 dark:text-gray-400 sm:hidden">v5.3</p>
+    <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Sheet Metal Unfolder v5.3</p>
   </footer>
 </div>
 
@@ -216,45 +261,47 @@
      6. ui/      — рендер интерфейса, диалоги, чертёж
      7. app.js   — инициализация, горячие клавиши
 -->
-<script src="js/i18n.js"></script>
-<script src="js/data.js"></script>
-<script src="js/dxf-tool-import.js"></script>
+<script src="js/i18n.js" defer></script>
+<script src="js/data.js" defer></script>
+<script src="js/dxf-tool-import.js" defer></script>
 
-<script src="js/engine/geometry.js"></script>
-<script src="js/engine/unfold.js"></script>
-<script src="js/engine/export-dxf.js"></script>
-<script src="js/engine/export-svg.js"></script>
+<script src="js/engine/geometry.js" defer></script>
+<script src="js/engine/unfold.js" defer></script>
+<script src="js/engine/export-dxf.js" defer></script>
+<script src="js/engine/export-svg.js" defer></script>
 
-<script src="js/state/state.js"></script>
-<script src="js/state/theme.js"></script>
-<script src="js/state/persistence.js"></script>
+<script src="js/state/state.js" defer></script>
+<script src="js/state/theme.js" defer></script>
+<script src="js/state/persistence.js" defer></script>
 
-<script src="js/simulation/profile.js"></script>
-<script src="js/simulation/render.js"></script>
-<script src="js/simulation/animation.js"></script>
+<script src="js/simulation/profile.js" defer></script>
+<script src="js/simulation/render.js" defer></script>
+<script src="js/simulation/animation.js" defer></script>
 
-<script src="js/canvas/viewport.js"></script>
-<script src="js/canvas/hem-2d.js"></script>
-<script src="js/canvas/draw.js"></script>
-<script src="js/canvas/tooling-2d.js"></script>
-<script src="js/canvas/unfold.js"></script>
-<script src="js/canvas/view3d.js"></script>
-<script src="js/canvas/sim3d.js"></script>
-<script src="js/canvas/events.js"></script>
+<script src="js/canvas/viewport.js" defer></script>
+<script src="js/canvas/hem-2d.js" defer></script>
+<script src="js/canvas/draw.js" defer></script>
+<script src="js/canvas/tooling-2d.js" defer></script>
+<script src="js/canvas/unfold.js" defer></script>
+<script src="js/canvas/view3d.js" defer></script>
+<script src="js/canvas/sim3d-three.js" defer></script>
+<script src="js/canvas/view3d-three.js" defer></script>
+<script src="js/canvas/sim3d.js" defer></script>
+<script src="js/canvas/events.js" defer></script>
 
-<script src="js/ui/render.js"></script>
-<script src="js/ui/dialogs.js"></script>
-<script src="js/ui/tool-import-dialog.js"></script>
-<script src="js/ui/hem-dialog.js"></script>
-<script src="js/ui/edit-dialogs.js"></script>
-<script src="js/ui/tool-buttons.js"></script>
-<script src="js/ui/params.js"></script>
-<script src="js/ui/points-table.js"></script>
-<script src="js/ui/dxf-profile-import.js"></script>
-<script src="js/ui/y-calc.js"></script>
-<script src="js/ui/unfold-info.js"></script>
-<script src="js/ui/drawing.js"></script>
+<script src="js/ui/render.js" defer></script>
+<script src="js/ui/dialogs.js" defer></script>
+<script src="js/ui/tool-import-dialog.js" defer></script>
+<script src="js/ui/hem-dialog.js" defer></script>
+<script src="js/ui/edit-dialogs.js" defer></script>
+<script src="js/ui/tool-buttons.js" defer></script>
+<script src="js/ui/params.js" defer></script>
+<script src="js/ui/points-table.js" defer></script>
+<script src="js/ui/dxf-profile-import.js" defer></script>
+<script src="js/ui/y-calc.js" defer></script>
+<script src="js/ui/unfold-info.js" defer></script>
+<script src="js/ui/drawing.js" defer></script>
 
-<script src="js/app.js"></script>
+<script src="js/app.js" defer></script>
 </body>
 </html>

@@ -31,6 +31,11 @@ function renderAll() {
   renderMobileUnfold();
   resizeView3d();
   draw3DPreview();
+  // v5.3: если 3D-модалка детали открыта — обновляем и её (геометрия
+  // могла измениться: металл/каймы/профиль/тема)
+  if (typeof view3dModalOpen !== 'undefined' && view3dModalOpen && typeof draw3DPreviewFull === 'function') {
+    draw3DPreviewFull();
+  }
   drawDrawCanvas();
   drawUnfoldCanvas();
   refreshIcons();
@@ -67,6 +72,9 @@ function renderHeader() {
   // v4.9: подсказка кнопки «Импорт профиля DXF»
   const dxfProfileBtn = document.getElementById('btn-dxf-profile');
   if (dxfProfileBtn) dxfProfileBtn.title = t('importDxfProfile');
+  // v5.1: подсказка кнопки «Открыть на холсте»
+  const openCanvasBtn = document.getElementById('btn-open-canvas');
+  if (openCanvasBtn) openCanvasBtn.title = t('openOnCanvasHint');
   // v4.9: кнопок SVG/PNG/PDF больше нет — остались чертёж и DXF
   ['btn-drawing', 'btn-dxf'].forEach(id => {
     const btn = document.getElementById(id);

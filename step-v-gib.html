@@ -3,7 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sheet Metal Unfolder — развёртка крестом для поддона</title>
+    <title>Развёртка крестом для поддона — импорт STEP, гиб, DXF | Sheet Metal Unfolder</title>
+    <meta name="description" content="Онлайн-инструмент развёртки крестом: импорт 3D-детали STEP, разрез плоскостью, плоская заготовка для поддона, 2D-симуляция гибки, экспорт DXF профиля гиба. Работает в браузере.">
+    <meta name="keywords" content="развёртка крестом, поддон, STEP импорт, развёртка листового металла, гибка, DXF, sheet metal unfold">
+    <meta name="theme-color" content="#16a34a">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Sheet Metal Unfolder">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:title" content="Развёртка крестом для поддона — импорт STEP, гиб, DXF">
+    <meta property="og:description" content="Импорт 3D-детали STEP, разрез плоскостью, плоская заготовка для поддона, симуляция гибки, экспорт DXF.">
+    <meta property="og:image" content="og-image.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Развёртка крестом для поддона — STEP, гиб, DXF">
+    <meta name="twitter:description" content="3D-деталь STEP в плоскую заготовку: развёртка крестом, симуляция, DXF.">
+    <meta name="twitter:image" content="og-image.png">
+    <script>
+    /* SEO: абсолютные og:image/twitter:image + canonical по фактическому адресу */
+    (function(){
+      try {
+        var base = new URL('.', location.href).href;
+        document.querySelectorAll('meta[property="og:image"],meta[name="twitter:image"]').forEach(function(m){
+          if (m.content) m.content = new URL(m.content, base).href;
+        });
+        var canon = new URL(location.pathname, location.origin).href;
+        var l = document.createElement('link'); l.rel = 'canonical'; l.href = canon;
+        document.head.appendChild(l);
+        var u = document.createElement('meta'); u.setAttribute('property','og:url'); u.content = canon;
+        document.head.appendChild(u);
+      } catch(e) {}
+    })();
+    </script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {

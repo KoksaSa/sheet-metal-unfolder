@@ -5,8 +5,11 @@
 // ═══════════════════════════════════════════════════════════════
 
 let view3dW = 300, view3dH = 256;
-let view3dZoom = 1, view3dRotY = 0.5, view3dRotX = -0.5;
-let view3dModalRotY = 0.5, view3dModalRotX = -0.5;
+// v5.3: стартовый ракурс — вид СВЕРХУ (rotX > 0): сразу видна лицевая
+// (синяя) сторона и мягкая тень на «полу» (раньше был вид снизу —
+// изнанка без тени; консистентно с 3D-симуляцией, sim3dRotX = 0.6)
+let view3dZoom = 1, view3dRotY = 0.5, view3dRotX = 0.5;
+let view3dModalRotY = 0.5, view3dModalRotX = 0.5;
 let view3dUserZoomed = false;
 let isDragging3D = false, drag3dStart = null;
 // Центр модели для центрирования 3D вида
@@ -44,6 +47,9 @@ function close3DModal() {
   modal.classList.add('hidden');
   view3dModalOpen = false;
   isDragging3DFull = false;
+  // v5.3: вернуть GL-канвас в миниатюру и перерисовать её
+  resizeView3d();
+  draw3DPreview();
 }
 
 function resizeView3dFull() {
@@ -64,14 +70,26 @@ function resizeView3dFull() {
 
 function draw3DPreviewFull() {
   const cv = document.getElementById('view3d-canvas-full');
-  if (!cv || S.points.length < 2) return;
+  if (!cv || S.points.length < 2) {
+    if (typeof view3DHideGL === 'function') view3DHideGL();
+    return;
+  }
   const ctx = cv.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const isDark = S.isDark;
-  ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
-  ctx.fillRect(0, 0, view3dFullW, view3dFullH);
+  // v5.3: WebGL — фон задаёт GL-канвас (градиент), 2D-канвас —
+  // прозрачный оверлей (номера гибов). ВАЖНО: у #view3d-canvas в
+  // styles.css есть непрозрачный background #f5f5f5 — в GL-режиме
+  // перекрываем его инлайном, в canvas-режиме возвращаем CSS-правило.
+  const useGL = (typeof view3DWillDraw === 'function') && view3DWillDraw(true);
+  cv.style.background = useGL ? 'transparent' : '';
+  if (useGL) ctx.clearRect(0, 0, view3dFullW, view3dFullH);
+  else {
+    ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
+    ctx.fillRect(0, 0, view3dFullW, view3dFullH);
+  }
 
   // Вращение модалки (временно подменяем для project3D)
   const _savedRotY = view3dRotY, _savedRotX = view3dRotX;
@@ -154,9 +172,7 @@ function draw3DProfile3D(useFull = false) {
   view3dCenterX = sumX / S.points.length;
   view3dCenterY = sumY / S.points.length + T / 2;
 
-  // Вычисляем бокс для автомасштаба
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-
+  // Точки для canvas-пути (проекция с ТЕКУЩИМ zoom — как раньше)
   const pts = [];
   for (let i = 0; i < S.points.length; i++) {
     const pt = S.points[i];
@@ -166,14 +182,39 @@ function draw3DProfile3D(useFull = false) {
       { x: pt.x, y: pt.y + T, z: -hw },
       { x: pt.x, y: pt.y + T, z: hw }
     ];
-    const corners3D = corners.map(c => project3D(c.x, c.y, c.z, useFull));
-    corners3D.forEach(p => {
-      if (p.x < minX) minX = p.x;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.y > maxY) maxY = p.y;
-    });
-    pts.push(corners3D);
+    pts.push(corners.map(c => project3D(c.x, c.y, c.z, useFull)));
+  }
+
+  // v5.3 FIX (автомасштаб): bbox считается по МИРОВЫМ координатам —
+  // проекция ТОЛЬКО поворотом Rx·Ry (scale = 1, смещение центра не
+  // влияет на габариты). Раньше bbox брали из project3D (scale =
+  // view3dZoom·0.5) и делили (W−pad) на уже спроецированные ПИКСЕЛИ —
+  // новый zoom зависел от старого (feedback loop): на каждом кадре
+  // zoom осциллировал (1.00↔1.54, у клампа 6.0↔0.26), как только
+  // draw3DPreview стал вызываться чаще одного раза (renderAll +
+  // ленивая загрузка three.js + открытая модалка). Теперь фит
+  // сходится за один кадр и стабилен (как в 3D-симуляции, см.
+  // комментарий в sim3d.js «Автомасштаб по МИРОВЫМ координатам»).
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  {
+    const cy2 = Math.cos(view3dRotY), sy2 = Math.sin(view3dRotY);
+    const cx2 = Math.cos(view3dRotX), sx2 = Math.sin(view3dRotX);
+    for (let i = 0; i < S.points.length; i++) {
+      const pt = S.points[i];
+      // средняя линия листа ± T/2 (нейтральная ось — как в WebGL-рендере)
+      const yLo = pt.y - T / 2, yHi = pt.y + T / 2;
+      for (let a = 0; a < 2; a++) {
+        const yy = a === 0 ? yLo : yHi;
+        for (let s = -1; s <= 1; s += 2) {
+          const zz = s * hw;
+          const x1 = pt.x * cy2 - zz * sy2;
+          const z1 = pt.x * sy2 + zz * cy2;
+          const y2 = yy * cx2 - z1 * sx2;
+          if (x1 < minX) minX = x1; if (x1 > maxX) maxX = x1;
+          if (y2 < minY) minY = y2; if (y2 > maxY) maxY = y2;
+        }
+      }
+    }
   }
 
   // Автомасштаб (только если пользователь не зумил вручную)
@@ -183,7 +224,26 @@ function draw3DProfile3D(useFull = false) {
     view3dZoom = autoScale / 0.5;
   }
 
-  // Re-project only if auto-scale changed the zoom
+  // v5.3: WebGL-путь (three.js) — сцена рисуется в GL-канвас позади
+  // (PBR-металл, дуги гибов, плавная кайма, мягкая тень), этот 2D-канвас
+  // — прозрачный оверлей для номеров гибов. Пока three.js не
+  // инициализирован/недоступен — прежний canvas-рендер ниже.
+  if (typeof view3DTryRender === 'function' && view3DTryRender(useFull)) {
+    draw3DBendNumbers3D(ctx, useFull);
+    return;
+  }
+  // Ленивая загрузка three.js для 3D-просмотра (однократно; после
+  // загрузки кадр перерисовывается уже в WebGL)
+  if (typeof view3DRequestLoad === 'function') {
+    view3DRequestLoad(function (ok) {
+      if (ok) {
+        draw3DPreview();
+        if (view3dModalOpen) draw3DPreviewFull();
+      }
+    });
+  }
+
+  // Re-project only if auto-scale changed the zoom (canvas-путь)
   if (!view3dUserZoomed && maxX - minX > 0 && maxY - minY > 0) {
     for (let i = 0; i < S.points.length; i++) {
       const pt = S.points[i];
@@ -394,17 +454,47 @@ function drawHemHooks3D(pts, useFull, isDark, faces) {
   });
 }
 
+// v5.3: оверлей WebGL-пути — номера гибов (позиции линий даёт
+// view3DGetBendsScreen — проекция через камеру three.js). Стиль тот
+// же, что у canvas-рендера: янтарный номер над линией гиба.
+function draw3DBendNumbers3D(ctx, useFull) {
+  if (typeof view3DGetBendsScreen !== 'function') return;
+  const list = view3DGetBendsScreen();
+  if (!list || list.length === 0) return;
+  const isDark = S.isDark;
+  ctx.save();
+  ctx.font = (useFull ? 'bold 10px' : 'bold 8px') + ' sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < list.length; i++) {
+    ctx.fillStyle = isDark ? '#fbbf24' : '#f59e0b';
+    ctx.fillText(String(list[i].num), list[i].x, list[i].y);
+  }
+  ctx.restore();
+}
+
 // ==================== 3D PREVIEW (миниатюра) ====================
 function draw3DPreview() {
   const cv = document.getElementById('view3d-canvas');
-  if (!cv || S.points.length < 2) return;
+  if (!cv || S.points.length < 2) {
+    if (typeof view3DHideGL === 'function') view3DHideGL();
+    return;
+  }
   const ctx = cv.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
   const isDark = S.isDark;
-  ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
-  ctx.fillRect(0, 0, view3dW, view3dH);
+  // v5.3: WebGL — фон задаёт GL-канвас (градиент), 2D-канвас —
+  // прозрачный оверлей (номера гибов; перекрываем непрозрачный
+  // background из styles.css, см. draw3DPreviewFull)
+  const useGL = (typeof view3DWillDraw === 'function') && view3DWillDraw(false);
+  cv.style.background = useGL ? 'transparent' : '';
+  if (useGL) ctx.clearRect(0, 0, view3dW, view3dH);
+  else {
+    ctx.fillStyle = isDark ? '#1a1a2e' : '#f5f5f5';
+    ctx.fillRect(0, 0, view3dW, view3dH);
+  }
 
   draw3DProfile3D(false);
 
