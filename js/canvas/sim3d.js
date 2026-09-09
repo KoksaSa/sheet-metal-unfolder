@@ -529,17 +529,28 @@ function draw3DSimulation() {
     const p1f = project3DSim(prof.pts[i].x+cx+nx, prof.pts[i].y+cy+ny, hw, panX, panY);
     const p2f = project3DSim(prof.pts[i+1].x+cx+nx, prof.pts[i+1].y+cy+ny, hw, panX, panY);
     const p3f = project3DSim(prof.pts[i+1].x+cx+nx, prof.pts[i+1].y+cy+ny, -hw, panX, panY);
-    // v4.9: дуга каймы — лицевая грань вырождается в тонкий «плавник»
-    // через ось заворота (r − T/2 = 0 у закрытой капли): физически лицо
-    // там действительно схлопывается (внутренняя поверхность сложена
-    // вдвое), рисовать плавник не нужно — внешняя труба закрыта
-    // обратными гранями. Лицевая грань ноги каймы не рисуем тоже: она
-    // лежит вплотную на лицевой грани основы (та же плоскость).
+    // v5.6 FIX («у каймы нет одной плоскости», canvas-путь): на дуге/ноге
+    // каймы вырождается грань со стороны ЦЕНТРА дуги (r − T/2 ≤ 0 —
+    // «плавник» через ось заворота; нога — грань вплотную на грани
+    // основы), а НЕ «лицевая» безусловно. До v5.6 лицевая пропускалась
+    // всегда: при зеркальных конфигурациях (отражение накопленного
+    // профиля, сторона каймы × лицевая сторона) пропускалась именно
+    // ВАЛИДНАЯ внешняя грань — кайма была «полой». Сторона вырождения —
+    // геометрически, по знаку поворота хорд (hemDegenerateSide):
+    // лицевая грань слева по ходу ⇔ faceSignSim > 0.
     const hemArcSeg = !!(prof.pts[i]._hemArc || prof.pts[i+1]._hemArc);
+    let hemSkipFront = false, hemSkipBack = false;
+    if (hemArcSeg) {
+      const degSide = (typeof hemDegenerateSide === 'function') ? hemDegenerateSide(prof.pts, i) : null;
+      if (degSide) {
+        hemSkipFront = (degSide === (faceSignSim > 0 ? 'left' : 'right'));
+        hemSkipBack = !hemSkipFront;
+      }
+    }
     // Лицевая поверхность (синяя) — isFace для direction-aware сортировки
-    if (!hemArcSeg) faces.push({ pts: [p0f,p1f,p2f,p3f], z: Math.max(p0f.z,p1f.z,p2f.z,p3f.z), fill: faceFill, stroke: faceStroke, isFace: true, fb: fb });
+    if (!hemSkipFront) faces.push({ pts: [p0f,p1f,p2f,p3f], z: Math.max(p0f.z,p1f.z,p2f.z,p3f.z), fill: faceFill, stroke: faceStroke, isFace: true, fb: fb });
     // Обратная поверхность (серая) — isBack
-    faces.push({ pts: [p0,p1,p2,p3], z: Math.max(p0.z,p1.z,p2.z,p3.z), fill: isDark?'#4b5563':'#6b7280', stroke: metalStroke, isBack: true, fb: -fb });
+    if (!hemSkipBack) faces.push({ pts: [p0,p1,p2,p3], z: Math.max(p0.z,p1.z,p2.z,p3.z), fill: isDark?'#4b5563':'#6b7280', stroke: metalStroke, isBack: true, fb: -fb });
     // Торцы (серые)
     faces.push({ pts: [p0,p1,p1f,p0f], z: Math.max(p0.z,p1.z,p1f.z,p0f.z), fill: metalFill, stroke: metalStroke });
     faces.push({ pts: [p3,p2,p2f,p3f], z: Math.max(p3.z,p2.z,p2f.z,p3f.z), fill: isDark?'#4b5563':'#6b7280', stroke: metalStroke });

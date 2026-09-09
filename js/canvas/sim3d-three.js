@@ -239,8 +239,23 @@ function three3DRebuildSheet(prof, T, hw, faceSignSim) {
     if (len <= 1e-9) continue;
     const nx = -dy / len * faceSignSim * (T / 2);
     const ny = dx / len * faceSignSim * (T / 2);
-    // v4.9: на дуге каймы лицевая грань вырождается — не строим (как в canvas)
+    // v5.6 FIX («у каймы нет одной плоскости»): на дуге/ноге каймы
+    // вырождается грань со стороны ЦЕНТРА дуги (r − T/2 ≤ 0), а НЕ
+    // «лицевая» безусловно. До v5.6 лицевая пропускалась всегда — при
+    // зеркальных конфигурациях (отражение накопленного профиля, сторона
+    // каймы × лицевая сторона) пропускалась именно ВАЛИДНАЯ внешняя
+    // грань, и кайма была «полой». Сторона вырождения — геометрически,
+    // по знаку поворота хорд (hemDegenerateSide, engine/geometry.js):
+    // лицевая грань слева по ходу ⇔ faceSignSim > 0.
     const hemArcSeg = !!(pts[i]._hemArc || pts[i + 1]._hemArc);
+    let hemSkipFront = false, hemSkipBack = false;
+    if (hemArcSeg) {
+      const degSide = (typeof hemDegenerateSide === 'function') ? hemDegenerateSide(pts, i) : null;
+      if (degSide) {
+        hemSkipFront = (degSide === (faceSignSim > 0 ? 'left' : 'right'));
+        hemSkipBack = !hemSkipFront;
+      }
+    }
     const ax = pts[i].x - nx, ay = pts[i].y - ny;
     const bx = pts[i + 1].x - nx, by = pts[i + 1].y - ny;
     const fx0 = pts[i].x + nx, fy0 = pts[i].y + ny;
@@ -248,10 +263,10 @@ function three3DRebuildSheet(prof, T, hw, faceSignSim) {
     const qBack = [[ax, ay, -hw], [ax, ay, hw], [bx, by, hw], [bx, by, -hw]];
     const qCap0 = [[ax, ay, -hw], [ax, ay, hw], [fx0, fy0, hw], [fx0, fy0, -hw]];
     const qCap1 = [[bx, by, -hw], [bx, by, hw], [fx1, fy1, hw], [fx1, fy1, -hw]];
-    quadsBack.push(qBack);
     quadsCaps.push(qCap0, qCap1);
-    quadsAll.push(qBack, qCap0, qCap1);
-    if (!hemArcSeg) {
+    quadsAll.push(qCap0, qCap1);
+    if (!hemSkipBack) { quadsBack.push(qBack); quadsAll.push(qBack); }
+    if (!hemSkipFront) {
       const qFront = [[fx0, fy0, -hw], [fx0, fy0, hw], [fx1, fy1, hw], [fx1, fy1, -hw]];
       quadsFront.push(qFront);
       quadsAll.push(qFront);

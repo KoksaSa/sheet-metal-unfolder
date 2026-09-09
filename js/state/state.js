@@ -23,6 +23,7 @@ const S = {
   simFlipY: false, // переворот по Y (верх↔низ)
   simBentMarkers: [], // индексы согнутых гибов в порядке выполнения
   toolLocked: false, // инструменты заблокированы (режим симуляции) — нельзя перетащить
+  toolKeyTarget: 'punch', // v5.5: активный инструмент для стрелок ←→↑↓ ('punch'|'die'), выбирается кликом
   // === Анимация гибки (2D) ===
   simAnimRunning: false,
   simAnimBendIdx: -1,

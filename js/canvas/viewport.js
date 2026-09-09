@@ -13,6 +13,11 @@ let canvasW = 400, canvasH = 300;
 let isPanning = false, panStart = null, dragPtIdx = null;
 let dragPunch = false;
 let dragDie = false;
+// v5.5: захват инструмента «без прыжка» — дельта курсора от якоря
+// (punch/dieOffset) в момент mousedown; перетаскивание сохраняет
+// точку захвата вместо перескакивания якоря под курсор.
+let dragPunchGrab = null;
+let dragDieGrab = null;
 let measureStart = null, measureEnd = null, measureStep = 0;
 let animFrame = 0;
 

@@ -205,6 +205,9 @@ function drawPressBrakeTooling(isDark, animInfo) {
   drawCtx.lineTo(o.cx, o.cy + dH2 * S.viewport.scale);
   drawCtx.stroke();
   drawCtx.setLineDash([]);
+
+  // v5.5: подсветка активного инструмента (режим установки)
+  if (typeof drawActiveToolHighlight === 'function') drawActiveToolHighlight(isDark);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -366,6 +369,120 @@ function drawToolsOnCanvas(isDark) {
       }
     }
   } // end if (punch)
+
+  // v5.5: подсветка активного инструмента (режим установки)
+  if (typeof drawActiveToolHighlight === 'function') drawActiveToolHighlight(isDark);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.5: МИРОВЫЕ BBOX ИНСТРУМЕНТОВ — ровно там, где они НАРИСОВАНЫ
+// (учитывают offset'ы, подъём пуансона над листом и bbox профиля).
+// Используются хит-тестом мыши (events.js) и подсветкой активного
+// инструмента.
+// FIX v5.5: раньше isNearPunch проверял зону у (pOX, 0..pH),
+// игнорируя punchOffsetY и подъём tipY — пуансон, поднятый над
+// листом (или сдвинутый ранее), нельзя было взять мышкой, в отличие
+// от матрицы, чья зона следовала за offset'ами.
+// ═══════════════════════════════════════════════════════════════
+function punchWorldBBox() {
+  const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
+  if (!punch) return null;
+  const pOX = S.punchOffsetX || 0;
+  const pOY = S.punchOffsetY || 0;
+  // С профилем заготовки пуансон рисуется ПОВЁРХ листа с подъёмом
+  // покоя (drawPressBrakeTooling, tipY); без профиля — прямой
+  // установка (drawToolsOnCanvas: вершина на pOY, без подъёма).
+  const lifted = (S.unfoldResult && S.points.length >= 2) ? punchTipWorldY(null) : 0;
+  if (punch.profile && punch.profile.chains) {
+    const offX = -punchProfileAxisX(punch.profile) + pOX;
+    const offY = -punch.profile.minY + pOY + lifted;
+    return {
+      minX: offX + punch.profile.minX, maxX: offX + punch.profile.maxX,
+      minY: offY + punch.profile.minY, maxY: offY + punch.profile.maxY,
+      tool: punch, kind: 'punch'
+    };
+  }
+  const halfS = (punch.swidth || 20) / 2;
+  const pH = punch.height || 50;
+  return {
+    minX: pOX - halfS, maxX: pOX + halfS,
+    minY: pOY + lifted, maxY: pOY + lifted + pH,
+    tool: punch, kind: 'punch'
+  };
+}
+
+function dieWorldBBox() {
+  const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
+  if (!die) return null;
+  const dOX = S.dieOffsetX || 0;
+  const dOY = S.dieOffsetY || 0;
+  if (die.profile && die.profile.chains) {
+    const vCenter = findDieGrooveCenter(die.profile);
+    const offX = -vCenter + dOX;
+    const offY = -(die.profile.minY + die.profile.height) + dOY;
+    return {
+      minX: offX + die.profile.minX, maxX: offX + die.profile.maxX,
+      minY: offY + die.profile.minY, maxY: offY + die.profile.maxY,
+      tool: die, kind: 'die'
+    };
+  }
+  const vW = die.vWidth || 10;
+  const sw = die.swidth || vW * 2;
+  const dH = die.height || 40;
+  return {
+    minX: dOX - sw / 2, maxX: dOX + sw / 2,
+    minY: dOY - dH, maxY: dOY,
+    tool: die, kind: 'die'
+  };
+}
+
+// v5.5: сдвиг АКТИВНОГО инструмента — стрелки клавиатуры двигают
+// тот, по которому кликнули/тянули последним (S.toolKeyTarget;
+// по умолчанию пуансон). Вызывается из app.js (←→↑↓, Shift — ×5).
+function moveActiveTool(dx, dy) {
+  const target = (S.toolKeyTarget === 'die') ? 'die' : 'punch';
+  if (target === 'die') {
+    S.dieOffsetX = (S.dieOffsetX || 0) + dx;
+    S.dieOffsetY = (S.dieOffsetY || 0) + dy;
+  } else {
+    S.punchOffsetX = (S.punchOffsetX || 0) + dx;
+    S.punchOffsetY = (S.punchOffsetY || 0) + dy;
+  }
+  if (typeof saveToolPositions === 'function') saveToolPositions();
+}
+
+// v5.5: подсветка АКТИВНОГО инструмента в режиме установки —
+// пунктирная рамка + метка стрелок. Показывает, кого будут двигать
+// клавиши ←→↑↓ (Shift — шаг 5 мм). Рисуется поверх инструментов
+// (в обоих режимах отрисовки), только когда инструменты НЕ заблокированы.
+function drawActiveToolHighlight(isDark) {
+  if (!S.showToolsOnCanvas || S.toolLocked) return;
+  const bb = (S.toolKeyTarget === 'die') ? dieWorldBBox() : punchWorldBBox();
+  if (!bb) return;
+  const c1 = w2c(bb.minX, bb.maxY);
+  const c2 = w2c(bb.maxX, bb.minY);
+  const x = Math.min(c1.cx, c2.cx) - 5;
+  const y = Math.min(c1.cy, c2.cy) - 5;
+  const w = Math.abs(c2.cx - c1.cx) + 10;
+  const h = Math.abs(c2.cy - c1.cy) + 10;
+  const col = isDark ? '#fbbf24' : '#d97706';
+  drawCtx.save();
+  drawCtx.strokeStyle = col;
+  drawCtx.lineWidth = 1.5;
+  drawCtx.setLineDash([5, 4]);
+  drawCtx.strokeRect(x, y, w, h);
+  drawCtx.setLineDash([]);
+  // Метка «двигается стрелками» — над рамкой (или под ней, если упёрлись в верх холста)
+  const hint = '←→↑↓';
+  drawCtx.font = 'bold 11px sans-serif';
+  const tw = drawCtx.measureText(hint).width;
+  const labelY = (y - 16 >= 2) ? y - 16 : y + h + 3;
+  drawCtx.fillStyle = isDark ? 'rgba(26,26,46,0.9)' : 'rgba(255,255,255,0.9)';
+  drawCtx.fillRect(x + w / 2 - tw / 2 - 4, labelY, tw + 8, 14);
+  drawCtx.fillStyle = col;
+  drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+  drawCtx.fillText(hint, x + w / 2, labelY + 7);
+  drawCtx.restore();
 }
 
 // ═══════════════════════════════════════════════════════════════

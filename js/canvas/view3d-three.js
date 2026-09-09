@@ -409,8 +409,11 @@ function view3DBuildProfile() {
 // ── Лист из полилинии (та же схема, что three3DRebuildSheet):
 // лицевая/изнанка = средняя линия ± T/2·CCW-нормаль·faceSign,
 // торцы — 2 квада на сегмент, рёбра — EdgesGeometry(25°).
-// На сегментах дуги каймы лицевая грань не строится (вырождается,
-// как в симуляции v4.9). ──
+// v5.6 FIX («у каймы нет одной плоскости»): на дуге/ноге каймы
+// вырождается грань со стороны ЦЕНТРА дуги (r − T/2 ≤ 0), а НЕ
+// «лицевая» безусловно (раньше — как в симуляции v4.9, из-за чего
+// при зеркальных конфигурациях кайма была «полой"). Сторона
+// вырождения — геометрически (hemDegenerateSide). ──
 function view3DRebuildSheet(prof) {
   const pts = prof.pts, T = prof.T, hw = prof.hw, faceSign = prof.faceSign;
   const quadsFront = [], quadsBack = [], quadsCaps = [], quadsAll = [];
@@ -421,6 +424,14 @@ function view3DRebuildSheet(prof) {
     const nx = -dy / len * faceSign * (T / 2);
     const ny = dx / len * faceSign * (T / 2);
     const hemArcSeg = !!(pts[i]._hemArc || pts[i + 1]._hemArc);
+    let hemSkipFront = false, hemSkipBack = false;
+    if (hemArcSeg) {
+      const degSide = (typeof hemDegenerateSide === 'function') ? hemDegenerateSide(pts, i) : null;
+      if (degSide) {
+        hemSkipFront = (degSide === (faceSign > 0 ? 'left' : 'right'));
+        hemSkipBack = !hemSkipFront;
+      }
+    }
     const ax = pts[i].x - nx, ay = pts[i].y - ny;
     const bx = pts[i + 1].x - nx, by = pts[i + 1].y - ny;
     const fx0 = pts[i].x + nx, fy0 = pts[i].y + ny;
@@ -428,10 +439,10 @@ function view3DRebuildSheet(prof) {
     const qBack = [[ax, ay, -hw], [ax, ay, hw], [bx, by, hw], [bx, by, -hw]];
     const qCap0 = [[ax, ay, -hw], [ax, ay, hw], [fx0, fy0, hw], [fx0, fy0, -hw]];
     const qCap1 = [[bx, by, -hw], [bx, by, hw], [fx1, fy1, hw], [fx1, fy1, -hw]];
-    quadsBack.push(qBack);
     quadsCaps.push(qCap0, qCap1);
-    quadsAll.push(qBack, qCap0, qCap1);
-    if (!hemArcSeg) {
+    quadsAll.push(qCap0, qCap1);
+    if (!hemSkipBack) { quadsBack.push(qBack); quadsAll.push(qBack); }
+    if (!hemSkipFront) {
       const qFront = [[fx0, fy0, -hw], [fx0, fy0, hw], [fx1, fy1, hw], [fx1, fy1, -hw]];
       quadsFront.push(qFront);
       quadsAll.push(qFront);

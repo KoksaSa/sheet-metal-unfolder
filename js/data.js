@@ -55,12 +55,12 @@ const DIES = [
   { id: 'V80', nameRu: 'V80', nameEn: 'V80', vWidth: 80, height: 160, maxAngle: 140 }
 ];
 
-// Пуансоны (punch): РЕАЛЬНЫЕ промышленные профили (European/Promecam style,
-// самые распространённые типы прессового инструмента):
-//   корпус 30 мм, хвостовик (tang) 13×30 мм, полная высота 75–110 мм.
+// Пуансон (punch): реальный промышленный профиль (European/Promecam
+// style): корпус 30 мм, хвостовик (tang) 13×30 мм, полная высота 75 мм.
+// v5.5: в списке один инструмент — Стандарт 88° R1 (самый ходовой).
 // Система координат профиля: вершина (нос) — в (0,0), ось Y — вверх,
 // X — поперёк машины. profile.tipX — X вершины внутри профиля
-// (несимметричные: гусиная шея, Z-ступенчатый).
+// (для несимметричных DXF-пуансонов).
 const PUNCH_BODY_W = 30;  // ширина корпуса, мм (European style)
 const PUNCH_TANG_W = 13;  // хвостовик European: 13×30 мм
 const PUNCH_TANG_H = 30;
@@ -129,102 +129,12 @@ function punchSymProfile(r, angle, body, H) {
   return punchFinishProfile(pts, 0);
 }
 
-// Гусиная шея (gooseneck): горло для высоких полок/U-профилей, корпус
-// смещён вправо на throat мм. Вершина — в (0,0), шейка изгибается вправо-вверх.
-function punchGooseProfile(r, angle, body, H, throat) {
-  const A = (angle / 2) * Math.PI / 180;
-  const d = r / Math.sin(A);
-  const half = body / 2;
-  const bx = throat, bxR = throat + body;      // корпус: [bx, bxR]
-  const yBT = H - PUNCH_TANG_H - 3;
-  const tw = PUNCH_TANG_W / 2;
-  const pts = [];
-  pts.push.apply(pts, punchArcPts(0, d, r, Math.PI + A, 2 * Math.PI - A, 6));
-  pts.push({ x: Math.sin(A) * (Math.sqrt(d*d - r*r)) + 1.7, y: Math.cos(A) * (Math.sqrt(d*d - r*r)) + 1.7 }); // короткая правая грань
-  // нижняя кромка шейки (свисает над листом с зазором)
-  [[7, 3.4], [13, 5], [19, 7], [25, 9.5], [30, 12], [34, 14.3], [37, 15.7]].forEach(p => {
-    pts.push({ x: p[0] * (throat / 40), y: p[1] });
-  });
-  pts.push({ x: bx, y: 16.5 });               // левый нижний угол корпуса
-  pts.push({ x: bxR, y: 16.5 });              // нижняя грань корпуса
-  pts.push({ x: bxR, y: yBT });               // правый корпус
-  pts.push({ x: bx + half + tw, y: H - PUNCH_TANG_H }); // фаска
-  pts.push({ x: bx + half + tw, y: H });      // хвостовик
-  pts.push({ x: bx + half - tw, y: H });
-  pts.push({ x: bx + half - tw, y: H - PUNCH_TANG_H });
-  pts.push({ x: bx, y: yBT });                // левый корпус (верх)
-  pts.push({ x: bx, y: 52 });                 // начало горла
-  // горло: вогнутая кривая гусиной шеи (полка детали проходит под ней)
-  [[36, 48], [31, 43], [25.5, 37.5], [20, 32], [15, 26.5], [10.5, 21], [7, 15.5], [4.2, 10.5], [2.4, 6.5], [1.3, 3], [0.6, 1.6]].forEach(p => {
-    pts.push({ x: p[0] * (throat / 40), y: p[1] });
-  });
-  return punchFinishProfile(pts, 0);          // замыкание → левая грань вершины
-}
-
-// Плоский закатной (hemming): широкая плоская подошва flatW со скосами
-// edgeR→30° — для подгибки/закатки каймы.
-function punchFlatProfile(flatW, edgeR, body, H) {
-  const half = body / 2, tw = PUNCH_TANG_W / 2;
-  const fx = flatW / 2;
-  const yBT = H - PUNCH_TANG_H - 3;
-  const yB = 2 + (half - fx) / Math.tan(Math.PI / 6); // скос 30° от вертикали
-  const pts = [];
-  pts.push({ x: -fx + edgeR, y: 0 });                          // плоская подошва (лево)
-  pts.push.apply(pts, punchArcPts(-fx + edgeR, edgeR, edgeR, -Math.PI / 2, Math.PI, 5));
-  pts.push({ x: -half, y: yB });                               // скос
-  pts.push({ x: -half, y: yBT });
-  pts.push({ x: -tw, y: H - PUNCH_TANG_H });
-  pts.push({ x: -tw, y: H });
-  pts.push({ x: tw, y: H });
-  pts.push({ x: tw, y: H - PUNCH_TANG_H });
-  pts.push({ x: half, y: yBT });
-  pts.push({ x: half, y: yB });                                // скос (право)
-  pts.push.apply(pts, punchArcPts(fx - edgeR, edgeR, edgeR, 0, -Math.PI / 2, 5));
-  pts.push({ x: fx - edgeR, y: 0 });                           // подошва (право) → замк.
-  return punchFinishProfile(pts, 0);
-}
-
-// Z-ступенчатый (offset): две вершины 88° на разных высотах (stepH),
-// между ними вертикальная стенка. Ось гиба — под стенкой (tipX=0).
-function punchOffsetProfile(r, angle, stepH, dx, body, H) {
-  const A = (angle / 2) * Math.PI / 180;
-  const half = body / 2, tw = PUNCH_TANG_W / 2;
-  const d = r / Math.sin(A);
-  const t = Math.sqrt(d * d - r * r);
-  const pLy = Math.cos(A) * t;                 // Y касательных дуг носов
-  const k = Math.cos(A) / Math.sin(A);         // котангенс полуугла
-  const yBT = H - PUNCH_TANG_H - 3;
-  const wall0 = pLy + (dx - Math.sin(A) * t) * k;        // грань нижнего носа → ось
-  const wall1 = wall0 + stepH;                           // верх стенки
-  const yFL = pLy + (half - dx - Math.sin(A) * t) * k;   // левая грань нижнего носа
-  const yFU = stepH + pLy + (half - dx - Math.sin(A) * t) * k; // правая грань верхнего
-  const pts = [];
-  pts.push.apply(pts, punchArcPts(-dx, d, r, Math.PI + A, 2 * Math.PI - A, 6)); // нижний нос
-  pts.push({ x: 0, y: wall0 });                        // грань → стенка
-  pts.push({ x: 0, y: wall1 });                        // стенка
-  pts.push({ x: dx - Math.sin(A) * t, y: stepH + pLy }); // левая грань верхнего носа
-  pts.push.apply(pts, punchArcPts(dx, d + stepH, r, Math.PI + A, 2 * Math.PI - A, 6)); // верхний нос
-  pts.push({ x: half, y: yFU });
-  pts.push({ x: half, y: yBT });
-  pts.push({ x: tw, y: H - PUNCH_TANG_H });
-  pts.push({ x: tw, y: H });
-  pts.push({ x: -tw, y: H });
-  pts.push({ x: -tw, y: H - PUNCH_TANG_H });
-  pts.push({ x: -half, y: yBT });
-  pts.push({ x: -half, y: yFL });
-  return punchFinishProfile(pts, 0);
-}
-
+// v5.5: по просьбе пользователя в списке оставлен ОДИН стандартный
+// пуансон 88° (R1) — самый ходовой инструмент европейского типа.
+// Удалены: R0.5/R2/R4-варианты, радиусный R8, острый 30°, гусиная
+// шея, закатной и Z-ступенчатый (профили из v5.4).
 const PUNCHES = [
-  { id: 'STD88-R0.5', nameRu: 'Стандарт 88° R0.5', nameEn: 'Standard 88° R0.5', type: 'standard', angle: 88, radius: 0.5, swidth: PUNCH_BODY_W, height: 75, maxAngle: 90, profile: punchSymProfile(0.5, 88, PUNCH_BODY_W, 75) },
-  { id: 'STD88-R1',   nameRu: 'Стандарт 88° R1',   nameEn: 'Standard 88° R1',   type: 'standard', angle: 88, radius: 1,   swidth: PUNCH_BODY_W, height: 75, maxAngle: 90, profile: punchSymProfile(1, 88, PUNCH_BODY_W, 75) },
-  { id: 'STD88-R2',   nameRu: 'Стандарт 88° R2',   nameEn: 'Standard 88° R2',   type: 'standard', angle: 88, radius: 2,   swidth: PUNCH_BODY_W, height: 75, maxAngle: 90, profile: punchSymProfile(2, 88, PUNCH_BODY_W, 75) },
-  { id: 'STD88-R4',   nameRu: 'Стандарт 88° R4',   nameEn: 'Standard 88° R4',   type: 'standard', angle: 88, radius: 4,   swidth: PUNCH_BODY_W, height: 75, maxAngle: 90, profile: punchSymProfile(4, 88, PUNCH_BODY_W, 75) },
-  { id: 'RAD88-R8',   nameRu: 'Радиусный 88° R8',  nameEn: 'Radius 88° R8',     type: 'radius',   angle: 88, radius: 8,   swidth: PUNCH_BODY_W, height: 75, maxAngle: 90, profile: punchSymProfile(8, 88, PUNCH_BODY_W, 75) },
-  { id: 'ACUTE30-R1', nameRu: 'Острый 30° R1',     nameEn: 'Acute 30° R1',      type: 'acute',    angle: 30, radius: 1,   swidth: PUNCH_BODY_W, height: 110, maxAngle: 90, profile: punchSymProfile(1, 30, PUNCH_BODY_W, 110) },
-  { id: 'GOOSE-88',   nameRu: 'Гусиная шея 88°',   nameEn: 'Gooseneck 88°',     type: 'gooseneck', angle: 88, radius: 1, swidth: PUNCH_BODY_W, height: 100, maxAngle: 88, profile: punchGooseProfile(1, 88, PUNCH_BODY_W, 100, 40) },
-  { id: 'FLAT-HEM',   nameRu: 'Закатной плоский',  nameEn: 'Flat hemming',      type: 'hemming',  angle: 176, radius: 2,  swidth: PUNCH_BODY_W, height: 75, maxAngle: 175, profile: punchFlatProfile(12, 2, PUNCH_BODY_W, 75) },
-  { id: 'OFFSET-Z',   nameRu: 'Z-ступенчатый 88°', nameEn: 'Offset (Z) 88°',    type: 'offset',   angle: 88, radius: 1,   swidth: PUNCH_BODY_W, height: 75, maxAngle: 88, profile: punchOffsetProfile(1, 88, 8, 9, PUNCH_BODY_W, 75) }
+  { id: 'STD88-R1', nameRu: 'Стандарт 88° R1', nameEn: 'Standard 88° R1', type: 'standard', angle: 88, radius: 1, swidth: PUNCH_BODY_W, height: 75, maxAngle: 90, profile: punchSymProfile(1, 88, PUNCH_BODY_W, 75) }
 ];
 
 // ==================== CUSTOM TOOLS (USER DEFINED) ====================
@@ -292,7 +202,21 @@ function getDieByIndex(idx) {
 function getPunchByIndex(idx) {
   if (idx === undefined || idx === null || isNaN(idx)) idx = 0;
   const all = getAllPunches();
+  if (!all.length) return null;
+  // v5.5: список встроенных пуансонов сокращён — старые сохранённые
+  // индексы (гусиная шея и др. из v5.4) мягко уводим на стандартный.
+  if (idx < 0 || idx > all.length - 1) idx = 0;
   return all[idx] || null;
+}
+
+// v5.5: нормализация индекса пуансона в S.metal после загрузки старого
+// проекта (индекс мог указывать на удалённую позицию). Вызывается из
+// init/importJSON/loadProject — чтобы и селект, и отрисовка совпадали.
+function normalizePunchIndex() {
+  const all = getAllPunches();
+  let i = S.metal.punchIndex;
+  if (i === undefined || i === null || isNaN(i) || i < 0 || i > all.length - 1) i = 0;
+  S.metal.punchIndex = i;
 }
 
 const PRESET_SHAPES = [

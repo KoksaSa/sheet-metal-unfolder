@@ -86,6 +86,9 @@ function importJSON(e) {
       S.points = d.points;
       Object.assign(S.metal, d.metal);
       if (d.hems) S.hems = d.hems; else S.hems = [];
+      // v5.5: индекс пуансона из старого проекта мог указывать на
+      // удалённую встроенную позицию — нормализуем
+      if (typeof normalizePunchIndex === 'function') normalizePunchIndex();
       S.unfoldResult = null;
       S.undoHistory = [];
       S.redoHistory = [];
@@ -154,6 +157,9 @@ function loadProject() {
     S.points = d.points;
     Object.assign(S.metal, d.metal);
     if (d.hems) S.hems = d.hems; else S.hems = [];
+    // v5.5: индекс пуансона из старого проекта мог указывать на
+    // удалённую встроенную позицию — нормализуем
+    if (typeof normalizePunchIndex === 'function') normalizePunchIndex();
     S.unfoldResult = null;
     S.undoHistory = [];
     S.redoHistory = [];

@@ -19,37 +19,35 @@ function isNearFirst(cx, cy) {
   return Math.sqrt((f.cx - cx) ** 2 + (f.cy - cy) ** 2) < 15;
 }
 
-// Проверка клика по пуансону (когда инструменты показаны на канвас)
+// Проверка клика по пуансону (когда инструменты показаны на канвас).
+// v5.5 FIX: зона следует за РЕАЛЬНОЙ отрисовкой — bbox профиля +
+// offset'ы + подъём пуансона над листом (punchWorldBBox). Раньше
+// зона была «прибита» к (pOX, 0..pH): пуансон над листом/со сдвигом
+// было НЕВОЗМОЖНО взять мышкой (матрица при этом бралась — её зона
+// учитывала offset'ы).
 function isNearPunch(cx, cy) {
   if (!S.showToolsOnCanvas) return false;
-  const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
-  if (!punch) return false;
-  const pOX = S.punchOffsetX || 0;
-  const pH = punch.height || 50;
-  const pS = punch.swidth || 20;
-  const tip = w2c(pOX, 0);
-  const top = w2c(pOX, pH);
-  const halfW = (pS / 2) * S.viewport.scale;
-  const minX = tip.cx - halfW, maxX = tip.cx + halfW;
-  const minY = Math.min(tip.cy, top.cy), maxY = Math.max(tip.cy, top.cy);
-  return cx >= minX - 8 && cx <= maxX + 8 && cy >= minY - 8 && cy <= maxY + 8;
+  const bb = (typeof punchWorldBBox === 'function') ? punchWorldBBox() : null;
+  if (!bb) return false;
+  const c1 = w2c(bb.minX, bb.maxY);
+  const c2 = w2c(bb.maxX, bb.minY);
+  const pad = 8;
+  return cx >= Math.min(c1.cx, c2.cx) - pad && cx <= Math.max(c1.cx, c2.cx) + pad &&
+         cy >= Math.min(c1.cy, c2.cy) - pad && cy <= Math.max(c1.cy, c2.cy) + pad;
 }
 
-// Проверка клика по матрице (когда инструменты показаны на канвас)
+// Проверка клика по матрице (когда инструменты показаны на канвас).
+// v5.5: через dieWorldBBox — учитывает и профиль (DXF-матрицы),
+// а не только swidth/fallback-прямоугольник.
 function isNearDie(cx, cy) {
   if (!S.showToolsOnCanvas) return false;
-  const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
-  if (!die) return false;
-  const dOX = S.dieOffsetX || 0;
-  const dOY = S.dieOffsetY || 0;
-  const dH = die.height || 40;
-  const sw = die.swidth || (die.vWidth ? die.vWidth * 2 : 40);
-  const halfW = (sw / 2) * S.viewport.scale;
-  const top = w2c(dOX, dOY);
-  const bot = w2c(dOX, -dH + dOY);
-  const minX = top.cx - halfW, maxX = top.cx + halfW;
-  const minY = Math.min(top.cy, bot.cy), maxY = Math.max(top.cy, bot.cy);
-  return cx >= minX - 8 && cx <= maxX + 8 && cy >= minY - 8 && cy <= maxY + 8;
+  const bb = (typeof dieWorldBBox === 'function') ? dieWorldBBox() : null;
+  if (!bb) return false;
+  const c1 = w2c(bb.minX, bb.maxY);
+  const c2 = w2c(bb.maxX, bb.minY);
+  const pad = 8;
+  return cx >= Math.min(c1.cx, c2.cx) - pad && cx <= Math.max(c1.cx, c2.cx) + pad &&
+         cy >= Math.min(c1.cy, c2.cy) - pad && cy <= Math.max(c1.cy, c2.cy) + pad;
 }
 
 /**
@@ -157,15 +155,26 @@ drawCanvas.addEventListener('mousedown', e => {
 
     // Перетаскивание инструментов (только если НЕ заблокированы).
     // Сначала пуансон (его зона перекрывается с матрицей у начала координат).
+    // v5.5: захват «без прыжка» — инструмент держится за точку, где
+    // взяли (дельта от якоря); клик также ВЫБИРАЕТ инструмент как
+    // активный для стрелок клавиатуры (S.toolKeyTarget).
     if (!S.toolLocked) {
       if (isNearPunch(cx, cy)) {
         dragPunch = true;
+        S.toolKeyTarget = 'punch';
+        const w = c2w(cx, cy);
+        dragPunchGrab = { dx: w.x - (S.punchOffsetX || 0), dy: w.y - (S.punchOffsetY || 0) };
         drawCanvas.style.cursor = 'grabbing';
+        drawDrawCanvas(); // перерисовать с подсветкой активного
         return;
       }
       if (isNearDie(cx, cy)) {
         dragDie = true;
+        S.toolKeyTarget = 'die';
+        const w = c2w(cx, cy);
+        dragDieGrab = { dx: w.x - (S.dieOffsetX || 0), dy: w.y - (S.dieOffsetY || 0) };
         drawCanvas.style.cursor = 'grabbing';
+        drawDrawCanvas();
         return;
       }
     }
@@ -285,22 +294,26 @@ drawCanvas.addEventListener('mousemove', e => {
 
   if (dragDie) {
     const w = c2w(cx, cy);
-    const p = S.snapToGrid ? snapPoint(w) : w;
-    S.dieOffsetX = p.x;
-    S.dieOffsetY = p.y;
-    localStorage.setItem('dieOffsetX', p.x);
-    localStorage.setItem('dieOffsetY', p.y);
+    let nx = w.x - (dragDieGrab ? dragDieGrab.dx : 0);
+    let ny = w.y - (dragDieGrab ? dragDieGrab.dy : 0);
+    if (S.snapToGrid) { const sp = snapPoint({ x: nx, y: ny }); nx = sp.x; ny = sp.y; }
+    S.dieOffsetX = nx;
+    S.dieOffsetY = ny;
+    localStorage.setItem('dieOffsetX', nx);
+    localStorage.setItem('dieOffsetY', ny);
     drawDrawCanvas();
     return;
   }
 
   if (dragPunch) {
     const w = c2w(cx, cy);
-    const p = S.snapToGrid ? snapPoint(w) : w;
-    S.punchOffsetX = p.x;
-    S.punchOffsetY = p.y;
-    localStorage.setItem('punchOffsetX', p.x);
-    localStorage.setItem('punchOffsetY', p.y);
+    let nx = w.x - (dragPunchGrab ? dragPunchGrab.dx : 0);
+    let ny = w.y - (dragPunchGrab ? dragPunchGrab.dy : 0);
+    if (S.snapToGrid) { const sp = snapPoint({ x: nx, y: ny }); nx = sp.x; ny = sp.y; }
+    S.punchOffsetX = nx;
+    S.punchOffsetY = ny;
+    localStorage.setItem('punchOffsetX', nx);
+    localStorage.setItem('punchOffsetY', ny);
     drawDrawCanvas();
     return;
   }
@@ -369,11 +382,13 @@ drawCanvas.addEventListener('mouseup', e => {
   }
   if (dragPunch) {
     dragPunch = false;
+    dragPunchGrab = null;
     drawCanvas.style.cursor = 'default';
     drawDrawCanvas();
   }
   if (dragDie) {
     dragDie = false;
+    dragDieGrab = null;
     drawCanvas.style.cursor = 'default';
     drawDrawCanvas();
   }
@@ -385,6 +400,8 @@ drawCanvas.addEventListener('mouseleave', () => {
   panStart = null;
   dragPunch = false;
   dragDie = false;
+  dragPunchGrab = null;
+  dragDieGrab = null;
   dragPtIdx = null;
   S.hoveredPt = -1;
   S.snapEndpoint = -1;

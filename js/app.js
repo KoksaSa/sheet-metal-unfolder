@@ -61,8 +61,10 @@ document.addEventListener('keydown', e => {
     case 'h': S.toolMode = 'hem'; S.drawFromIdx = null; renderAll(); break;
     case 'm': S.toolMode = 'measure'; S.drawFromIdx = null; measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
     case 'f': S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 }; drawDrawCanvas(); break;
-    // Стрелки: в режиме установки инструмента — двигают пуансон.
-    // При заблокированных инструментах (симуляция) — перевороты заготовки.
+    // Стрелки: в режиме установки — двигают АКТИВНЫЙ инструмент
+    // (пуансон ИЛИ матрицу — по последнему клику; по умолчанию пуансон;
+    // Shift — шаг 5 мм). При заблокированных инструментах (симуляция) —
+    // перевороты заготовки.
     // ВАЖНО: используем `key` (уже toLowerCase), а не `e.key` (="ArrowLeft"),
     // иначе сравнение e.key === 'arrowleft' всегда false и шаг всегда +1.
     case 'arrowleft':
@@ -71,10 +73,8 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         if (S.toolLocked) {
           S.simFlipX = !S.simFlipX;
-        } else {
-          const step = key === 'arrowleft' ? -1 : 1;
-          S.punchOffsetX = (S.punchOffsetX || 0) + step;
-          localStorage.setItem('punchOffsetX', S.punchOffsetX);
+        } else if (typeof moveActiveTool === 'function') {
+          moveActiveTool((key === 'arrowleft' ? -1 : 1) * (e.shiftKey ? 5 : 1), 0);
         }
         if (typeof drawDrawCanvas === 'function') drawDrawCanvas();
       }
@@ -85,10 +85,8 @@ document.addEventListener('keydown', e => {
         e.preventDefault();
         if (S.toolLocked) {
           S.simFlipY = !S.simFlipY;
-        } else {
-          const step = key === 'arrowup' ? 1 : -1;
-          S.punchOffsetY = (S.punchOffsetY || 0) + step;
-          localStorage.setItem('punchOffsetY', S.punchOffsetY);
+        } else if (typeof moveActiveTool === 'function') {
+          moveActiveTool(0, (key === 'arrowup' ? 1 : -1) * (e.shiftKey ? 5 : 1));
         }
         if (typeof drawDrawCanvas === 'function') drawDrawCanvas();
       }
@@ -160,6 +158,10 @@ function init() {
         // Ensure new fields exist (compatibility with old saves)
         if (S.metal.dieIndex === undefined) S.metal.dieIndex = 0;
         if (S.metal.punchIndex === undefined) S.metal.punchIndex = 0;
+        // v5.5: список встроенных пуансонов сокращён до одного —
+        // старый сохранённый индекс (напр. «гусиная шея» из v5.4)
+        // нормализуем в допустимый диапазон
+        if (typeof normalizePunchIndex === 'function') normalizePunchIndex();
         if (S.metal.metalTypeIndex === undefined || !METAL_TYPES[S.metal.metalTypeIndex]) S.metal.metalTypeIndex = 0;
         if (S.checkDieHeight === undefined) S.checkDieHeight = true;
         if (d.hems) S.hems = d.hems;
