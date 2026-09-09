@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Калькулятор развёртки листового металла — профиль, гибка 2D/3D, DXF | Sheet Metal Unfolder v5.3</title>
+  <title>Калькулятор развёртки листового металла — профиль, гибка 2D/3D, DXF | Sheet Metal Unfolder v5.4</title>
   <meta name="description" content="Онлайн-калькулятор развёрток деталей из листового металла: постройте профиль — получите плоскую заготовку с учётом толщины, радиуса гиба и K-фактора. Симуляция гибки в 2D и 3D, экспорт DXF, чертежи, каймы, калькулятор оси Y листогиба.">
   <meta name="keywords" content="развёртка листового металла, калькулятор развёртки, развёртка онлайн, гибка листа, K-фактор, припуск на гиб, ось Y листогиба, листогибочный пресс, DXF, sheet metal unfold, flat pattern, bend allowance">
   <meta name="theme-color" content="#16a34a">
@@ -67,7 +67,7 @@
       </div>
       <div class="hidden sm:block">
         <h1 id="h-title" class="text-sm font-bold leading-tight tracking-tight"></h1>
-        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight font-medium">Sheet Metal Unfolder v5.3</p>
+        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-tight font-medium">Sheet Metal Unfolder v5.4</p>
       </div>
     </div>
     <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-end">
@@ -240,8 +240,8 @@
   <!-- FOOTER -->
   <footer class="no-print border-t bg-white dark:bg-gray-800 px-4 py-1.5 flex items-center justify-between shrink-0">
     <p class="text-[10px] text-gray-500 dark:text-gray-400 hidden sm:block" id="footer-controls"></p>
-    <p class="text-[10px] text-gray-500 dark:text-gray-400 sm:hidden">v5.3</p>
-    <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Sheet Metal Unfolder v5.3</p>
+    <p class="text-[10px] text-gray-500 dark:text-gray-400 sm:hidden">v5.4</p>
+    <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Sheet Metal Unfolder v5.4</p>
   </footer>
 </div>
 
@@ -249,8 +249,10 @@
 <div id="toast-container"></div>
 <!-- CONTEXT MENU -->
 <div id="context-menu" class="context-menu hidden"></div>
-<!-- DIALOGS -->
-<div id="dialog-overlay" style="display:none" class="dialog-overlay" onclick="if(event.target===this)closeDialog()"><div class="dialog-box" id="dialog-content"></div></div>
+<!-- DIALOGS: закрытие по клику мимо окна обрабатывается в dialogs.js
+     (v5.4 FIX: раньше выделение текста мышью с выходом курсора за окно
+     порождало click на оверлее и закрывало диалог) -->
+<div id="dialog-overlay" style="display:none" class="dialog-overlay"><div class="dialog-box" id="dialog-content"></div></div>
 
 <!-- ==================== SCRIPTS (order matters) ====================
      1. i18n, данные, DXF-парсер

@@ -88,3 +88,24 @@ function closeDialog() {
     overlay.style.display = 'none';
   }
 }
+
+// ==================== ЗАКРЫТИЕ ПО КЛИКУ МИМО ОКНА ====================
+// v5.4 FIX: при выделении текста мышью внутри окна ввода курсор часто
+// выходит за пределы окна (на оверлей). Браузер порождает click на общем
+// предке mousedown/mouseup — оверлее — и окно закрывалось посреди выделения.
+// Теперь закрываем ТОЛЬКО если нажатие мыши НАЧАЛОСЬ на оверлее (вне окна):
+// drag, начавшийся внутри окна (выделение текста), click по оверлее не
+// закрывает. Простые клики по фону работают как раньше.
+(function () {
+  const overlay = document.getElementById('dialog-overlay');
+  if (!overlay) return;
+  let pressOutside = false;
+  overlay.addEventListener('mousedown', function (e) {
+    pressOutside = (e.target === overlay);
+  });
+  overlay.addEventListener('click', function (e) {
+    if (e.target !== overlay) return;
+    if (pressOutside) closeDialog();
+    pressOutside = false;
+  });
+})();

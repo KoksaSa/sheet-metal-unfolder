@@ -36,6 +36,11 @@ function renderAll() {
   if (typeof view3dModalOpen !== 'undefined' && view3dModalOpen && typeof draw3DPreviewFull === 'function') {
     draw3DPreviewFull();
   }
+  // v5.4: если открыта 3D-СИМУЛЯЦИЯ — обновляем и её (пуансон/матрица/
+  // смещения/тема могли измениться; геометрия перестраивается по sig)
+  if (typeof sim3dModalOpen !== 'undefined' && sim3dModalOpen && typeof draw3DSimulation === 'function') {
+    draw3DSimulation();
+  }
   drawDrawCanvas();
   drawUnfoldCanvas();
   refreshIcons();

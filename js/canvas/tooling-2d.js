@@ -138,8 +138,10 @@ function drawPressBrakeTooling(isDark, animInfo) {
     drawCtx.lineWidth = 1.5;
 
     if (punch.profile && punch.profile.chains) {
-      // Кастомный пуансон — реальный DXF-профиль + анимация погружения
-      const offX = -(punch.profile.minX + punch.profile.width / 2) + pOX;
+      // Пуансон с реальным профилем (стандартный или DXF) + анимация погружения.
+      // v5.4: ось гиба — через ВЕРШИНУ профиля (tipX), а не центр bbox —
+      // корректно для несимметричных (гусиная шея, Z-ступенчатый).
+      const offX = -punchProfileAxisX(punch.profile) + pOX;
       const offY = -punch.profile.minY + pOY + tipY;
       punch.profile.chains.forEach(chain => {
         drawCtx.beginPath();
@@ -293,7 +295,8 @@ function drawToolsOnCanvas(isDark) {
     drawCtx.lineWidth = 1.5;
 
     if (punch.profile && punch.profile.chains) {
-      const offX = -(punch.profile.minX + punch.profile.width / 2) + pOX;
+      // v5.4: ось гиба — через вершину профиля (tipX)
+      const offX = -punchProfileAxisX(punch.profile) + pOX;
       const offY = -punch.profile.minY + pOY;
       punch.profile.chains.forEach(chain => {
         drawCtx.beginPath();

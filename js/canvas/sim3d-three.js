@@ -277,9 +277,9 @@ function three3DRebuildSheet(prof, T, hw, faceSignSim) {
 function three3DToolsSig(die, punch, hw, isDark) {
   const d = die || {}, p = punch || {};
   return [
-    !!(d.profile && d.profile.chains), d.vWidth, d.swidth, d.height,
+    d.id, !!(d.profile && d.profile.chains), d.vWidth, d.swidth, d.height,
     S.dieOffsetX || 0, S.dieOffsetY || 0,
-    !!(p.profile && p.profile.chains), p.swidth, p.height,
+    p.id, !!(p.profile && p.profile.chains), p.swidth, p.height, p.angle, p.radius,
     S.punchOffsetX || 0, S.punchOffsetY || 0,
     hw, isDark
   ].join('|');
@@ -357,7 +357,8 @@ function three3DRebuildTools(die, punch, hw, isDark) {
   // ── Пуансон (геометрия статична, позиция — каждый кадр) ──
   if (punch) {
     if (punch.profile && punch.profile.chains && punch.profile.chains.length > 0) {
-      const offX0 = -(punch.profile.minX + punch.profile.width / 2);
+      // v5.4: ось гиба — через вершину профиля (tipX), не центр bbox
+      const offX0 = -punchProfileAxisX(punch.profile);
       const offY0 = -punch.profile.minY;
       three3D.punchIsBox = false;
       const g = three3DExtrudeGroup(punch.profile.chains, function (p) {
@@ -482,6 +483,11 @@ function renderThree3DSim(opts) {
   if (punch) {
     const pH = punch.height || 50;
     if (pH > wMxY) wMxY = pH;
+    // v5.4: ширина пуансона (гусиная шея шире корпуса) — в границы сцены
+    const pW2 = (punch.profile && punch.profile.width)
+      ? punch.profile.width / 2
+      : (punch.swidth || 20) / 2;
+    if (pW2 > wMxX) wMxX = pW2;
   }
   if (!isFinite(wMnX)) { wMnX = -100; wMxX = 100; wMnY = -100; wMxY = 100; }
   const R = Math.max(wMxX - wMnX, wMxY - wMnY, 2 * hw) / 2;

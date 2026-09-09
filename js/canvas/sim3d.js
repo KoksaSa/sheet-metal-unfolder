@@ -414,8 +414,9 @@ function draw3DSimulation() {
   if (punch) {
     const pOX = S.punchOffsetX||0, pOY = S.punchOffsetY||0;
     if (punch.profile && punch.profile.chains && punch.profile.chains.length > 0) {
-      // Кастомный пуансон — DXF-контур как выдавленный профиль (по Z)
-      const offX = -(punch.profile.minX + punch.profile.width / 2) + pOX;
+      // Пуансон с профилем — контур как выдавленный профиль (по Z).
+      // v5.4: ось гиба — через вершину профиля (tipX)
+      const offX = -punchProfileAxisX(punch.profile) + pOX;
       const offY = -punch.profile.minY + pOY + punchTipY;
       punch.profile.chains.forEach(chain => {
         if (!chain || chain.length < 2) return;

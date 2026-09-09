@@ -382,11 +382,12 @@ function generateDrawing() {
     const color = kind === 'punch' ? '#ef4444' : '#3b82f6';
     const pad = 3;
     let chains = null, minX = 0, minY = 0, pw = 0, ph = 0;
-    if (tool.isCustom && tool.profile && tool.profile.chains && tool.profile.chains.length) {
+    // v5.4: реальный контур и для стандартных инструментов с профилем
+    if (tool.profile && tool.profile.chains && tool.profile.chains.length) {
       chains = tool.profile.chains;
       minX = tool.profile.minX || 0; minY = tool.profile.minY || 0;
       pw = tool.profile.width; ph = tool.profile.height;
-    } else if (tool.isCustom && Array.isArray(tool.profile) && tool.profile.length) {
+    } else if (Array.isArray(tool.profile) && tool.profile.length) {
       chains = [tool.profile];
       minX = Math.min(...tool.profile.map(p => p.x));
       minY = Math.min(...tool.profile.map(p => p.y));

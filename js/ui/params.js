@@ -5,14 +5,17 @@
 // ═══════════════════════════════════════════════════════════════
 
 // ==================== МИНИАТЮРЫ ИНСТРУМЕНТОВ (SVG) ====================
-// Подпись размеров инструмента: V — ручей, S — ширина, H — высота (R для пуансона)
+// Подпись размеров инструмента: V — ручей, S — ширина корпуса, H — высота.
+// Для стандартных пуансонов v5.4 радиус уже в названии («Стандарт 88° R1») —
+// R в подписи не дублируем.
 function toolSizeLabel(tool, isDie) {
   if (!tool) return '';
   const parts = [];
   if (isDie) {
     if (tool.vWidth && tool.vWidth > 0) parts.push('V' + tool.vWidth);
   } else {
-    if (tool.radius && tool.radius > 0) parts.push('R' + tool.radius);
+    if (tool.radius && tool.radius > 0 && !tool.type) parts.push('R' + tool.radius);
+    if (tool.angle && tool.angle > 0 && !tool.type) parts.push(tool.angle + '°');
   }
   if (tool.swidth && tool.swidth > 0) parts.push('S' + tool.swidth);
   if (tool.height && tool.height > 0) parts.push('H' + tool.height);
@@ -24,12 +27,13 @@ function toolThumbSVG(tool, kind, w, h) {
   const pad = 4;
   if (!tool) return '';
 
-  // Кастомный инструмент с профилем — рисуем его
-  if (tool.isCustom && tool.profile && tool.profile.chains && tool.profile.chains.length) {
+  // Инструмент с профилем (v5.4: и стандартный, и пользовательский) — рисуем
+  // его реальный контур
+  if (tool.profile && tool.profile.chains && tool.profile.chains.length) {
     return drawProfileSVG(tool.profile, w, h, kind === 'punch' ? '#ef4444' : '#3b82f6', pad);
   }
   // Старый формат (массив точек) — конвертируем на лету
-  if (tool.isCustom && Array.isArray(tool.profile) && tool.profile.length) {
+  if (Array.isArray(tool.profile) && tool.profile.length) {
     const prof = {
       chains: [tool.profile],
       minX: Math.min(...tool.profile.map(p => p.x)),

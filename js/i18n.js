@@ -2,7 +2,7 @@
 const STRINGS = {
   ru: {
     title: 'Развёртка листового металла',
-    subtitle: 'Sheet Metal Unfolder v5.3',
+    subtitle: 'Sheet Metal Unfolder v5.4',
     unfold: 'Развернуть',
     downloadDxf: 'Скачать dxf развертки',
     downloadSvg: 'Скачать SVG',
@@ -20,7 +20,7 @@ const STRINGS = {
     areaLabel: 'Площадь',
     areaSuffix: ' мм²',
     footerControls: 'Координаты в миллиметрах • Масштаб: колёсико мыши • Панорама: Alt + ЛКМ',
-    footerVersion: 'Развёртка листового металла v5.3',
+    footerVersion: 'Развёртка листового металла v5.4',
     paramsSection: 'ПАРАМЕТРЫ',
     bendWord1: 'гиб',
     bendWord2: 'гиба',
@@ -270,7 +270,7 @@ const STRINGS = {
   },
   en: {
     title: 'Sheet Metal Unfolder',
-    subtitle: 'Sheet Metal Unfolder v5.3',
+    subtitle: 'Sheet Metal Unfolder v5.4',
     unfold: 'Unfold',
     downloadDxf: 'Download flat pattern DXF',
     downloadSvg: 'Download SVG',
@@ -288,7 +288,7 @@ const STRINGS = {
     areaLabel: 'Area',
     areaSuffix: ' mm²',
     footerControls: 'Coordinates in mm \u2022 Zoom: mouse wheel \u2022 Pan: Alt + LMB',
-    footerVersion: 'Sheet Metal Unfolder v5.3',
+    footerVersion: 'Sheet Metal Unfolder v5.4',
     paramsSection: 'PARAMETERS',
     bendWord1: 'bend',
     bendWord2: 'bends',
