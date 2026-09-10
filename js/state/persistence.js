@@ -83,12 +83,17 @@ function importJSON(e) {
     try {
       const d = JSON.parse(ev.target.result);
       if (!d.points || !d.metal) { toast(t('importFormatError'), 'error'); return; }
+      // v5.8: позиции ТЕКУЩИХ инструментов — в карту (уходят «своим»)
+      if (typeof syncToolPositionsToMap === 'function') syncToolPositionsToMap();
       S.points = d.points;
       Object.assign(S.metal, d.metal);
       if (d.hems) S.hems = d.hems; else S.hems = [];
       // v5.5: индекс пуансона из старого проекта мог указывать на
       // удалённую встроенную позицию — нормализуем
       if (typeof normalizePunchIndex === 'function') normalizePunchIndex();
+      // v5.8: инструменты загруженного проекта получают ИХ сохранённые
+      // позиции (на этой машине не ставившиеся — встанут в (0,0))
+      if (typeof applyToolPositionsFromMap === 'function') applyToolPositionsFromMap();
       S.unfoldResult = null;
       S.undoHistory = [];
       S.redoHistory = [];
@@ -121,30 +126,55 @@ function saveProject() {
 }
 
 // ==================== ПОЗИЦИИ ИНСТРУМЕНТОВ НА ХОЛСТЕ ====================
+// v5.8: помимо единых смещений текущих инструментов храним КАРТЫ ПО
+// ИНСТРУМЕНТАМ (punchPositions/diePositions) — каждый пуансон/матрица
+// запоминает своё установленное место и восстанавливает его при
+// возврате (переключение в списке, undo/redo, импорт проекта).
 function saveToolPositions() {
   try {
+    // Текущие смещения уходят в карту «своих» инструментов
+    if (typeof syncToolPositionsToMap === 'function') syncToolPositionsToMap();
     localStorage.setItem('sheet-metal-tool-positions', JSON.stringify({
       punchOffsetX: S.punchOffsetX || 0,
       punchOffsetY: S.punchOffsetY || 0,
       dieOffsetX: S.dieOffsetX || 0,
       dieOffsetY: S.dieOffsetY || 0,
       bendPointX: S.bendPointX || 0,
-      bendPointY: S.bendPointY || 0
+      bendPointY: S.bendPointY || 0,
+      punchPositions: S.punchPositions || {},
+      diePositions: S.diePositions || {}
     }));
+    // Легаси-ключи (state.js читает их при старте до loadToolPositions)
+    localStorage.setItem('punchOffsetX', S.punchOffsetX || 0);
+    localStorage.setItem('punchOffsetY', S.punchOffsetY || 0);
+    localStorage.setItem('dieOffsetX', S.dieOffsetX || 0);
+    localStorage.setItem('dieOffsetY', S.dieOffsetY || 0);
   } catch (err) { console.error('Save tool positions error:', err); }
 }
 
 function loadToolPositions() {
   try {
+    let hadMaps = false;
     const raw = localStorage.getItem('sheet-metal-tool-positions');
-    if (!raw) return;
-    const d = JSON.parse(raw);
-    if (d.punchOffsetX !== undefined) S.punchOffsetX = d.punchOffsetX;
-    if (d.punchOffsetY !== undefined) S.punchOffsetY = d.punchOffsetY;
-    if (d.dieOffsetX !== undefined) S.dieOffsetX = d.dieOffsetX;
-    if (d.dieOffsetY !== undefined) S.dieOffsetY = d.dieOffsetY;
-    if (d.bendPointX !== undefined) S.bendPointX = d.bendPointX;
-    if (d.bendPointY !== undefined) S.bendPointY = d.bendPointY;
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d.punchOffsetX !== undefined) S.punchOffsetX = d.punchOffsetX;
+      if (d.punchOffsetY !== undefined) S.punchOffsetY = d.punchOffsetY;
+      if (d.dieOffsetX !== undefined) S.dieOffsetX = d.dieOffsetX;
+      if (d.dieOffsetY !== undefined) S.dieOffsetY = d.dieOffsetY;
+      if (d.bendPointX !== undefined) S.bendPointX = d.bendPointX;
+      if (d.bendPointY !== undefined) S.bendPointY = d.bendPointY;
+      // v5.8: карты позиций по инструментам
+      if (d.punchPositions && typeof d.punchPositions === 'object') { S.punchPositions = d.punchPositions; hadMaps = true; }
+      if (d.diePositions && typeof d.diePositions === 'object') { S.diePositions = d.diePositions; hadMaps = true; }
+    }
+    // v5.8: апгрейд с v5.7 (карт не было): единое сохранённое смещение
+    // приписываем ТЕКУЩЕМУ инструменту как его установленное место —
+    // чтобы при первом переключении позиция не потерялась. Если карты
+    // УЖЕ есть (v5.8) — они точнее единого смещения (могло отстать от
+    // смены инструмента), карту НЕ трогаем: applyToolPositionsFromMap
+    // выберет позицию именно выбранного инструмента.
+    if (!hadMaps && typeof syncToolPositionsToMap === 'function') syncToolPositionsToMap();
   } catch (err) { console.error('Load tool positions error:', err); }
 }
 
@@ -154,12 +184,17 @@ function loadProject() {
     if (!raw) { toast(t('noSaved'), 'error'); return; }
     const d = JSON.parse(raw);
     if (!d.points || !d.metal) { toast(t('importFormatError'), 'error'); return; }
+    // v5.8: позиции текущих инструментов — в карту, затем применяем
+    // сохранённые позиции инструментов загружаемого проекта
+    if (typeof syncToolPositionsToMap === 'function') syncToolPositionsToMap();
     S.points = d.points;
     Object.assign(S.metal, d.metal);
     if (d.hems) S.hems = d.hems; else S.hems = [];
     // v5.5: индекс пуансона из старого проекта мог указывать на
     // удалённую встроенную позицию — нормализуем
     if (typeof normalizePunchIndex === 'function') normalizePunchIndex();
+    // v5.8: применяем сохранённые ПО ИНСТРУМЕНТУ позиции
+    if (typeof applyToolPositionsFromMap === 'function') applyToolPositionsFromMap();
     S.unfoldResult = null;
     S.undoHistory = [];
     S.redoHistory = [];

@@ -326,8 +326,9 @@ drawCanvas.addEventListener('mousemove', e => {
     if (S.snapToGrid) { const sp = snapPoint({ x: nx, y: ny }); nx = sp.x; ny = sp.y; }
     S.dieOffsetX = nx;
     S.dieOffsetY = ny;
-    localStorage.setItem('dieOffsetX', nx);
-    localStorage.setItem('dieOffsetY', ny);
+    // v5.8: единая точка сохранения — localStorage + карта позиций
+    // «своих» инструментов (перетаскивание запоминается сразу)
+    if (typeof saveToolPositions === 'function') saveToolPositions();
     drawDrawCanvas();
     return;
   }
@@ -339,8 +340,8 @@ drawCanvas.addEventListener('mousemove', e => {
     if (S.snapToGrid) { const sp = snapPoint({ x: nx, y: ny }); nx = sp.x; ny = sp.y; }
     S.punchOffsetX = nx;
     S.punchOffsetY = ny;
-    localStorage.setItem('punchOffsetX', nx);
-    localStorage.setItem('punchOffsetY', ny);
+    // v5.8: единая точка сохранения — localStorage + карта позиций
+    if (typeof saveToolPositions === 'function') saveToolPositions();
     drawDrawCanvas();
     return;
   }

@@ -228,8 +228,12 @@ function applyCustomTool() {
         maxAngle: maxAngle,
         profile
       });
-      // Выбираем только что добавленную матрицу
-      S.metal.dieIndex = DIES.length + (loadCustomTools().customDies.length - 1);
+      // Выбираем только что добавленную матрицу. v5.8: через
+      // switchToolIndex — прежняя матрица ЗАПОМИНАЕТ своё место, новая
+      // (никогда не ставившаяся) появляется в (0,0)
+      const newDieIdx = DIES.length + (loadCustomTools().customDies.length - 1);
+      if (typeof switchToolIndex === 'function') switchToolIndex('die', newDieIdx);
+      else S.metal.dieIndex = newDieIdx;
     } else {
       const swidth = numVal('tool-swidth', Math.round(profile.width));
       const height = numVal('tool-height', Math.round(profile.height));
@@ -244,8 +248,12 @@ function applyCustomTool() {
         maxAngle: maxAngle,
         profile
       });
-      // Выбираем только что добавленный пуансон
-      S.metal.punchIndex = PUNCHES.length + (loadCustomTools().customPunches.length - 1);
+      // Выбираем только что добавленный пуансон. v5.8: через
+      // switchToolIndex — прежний пуансон запоминает своё место, новый
+      // появляется в (0,0)
+      const newPunchIdx = PUNCHES.length + (loadCustomTools().customPunches.length - 1);
+      if (typeof switchToolIndex === 'function') switchToolIndex('punch', newPunchIdx);
+      else S.metal.punchIndex = newPunchIdx;
     }
     closeDialog();
     // v5.7: НОВЫЙ инструмент (нарисованный или из DXF) появляется на

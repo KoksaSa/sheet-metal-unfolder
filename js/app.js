@@ -193,6 +193,9 @@ function init() {
 
   // Загружаем позиции инструментов на холсте
   if (typeof loadToolPositions === 'function') loadToolPositions();
+  // v5.8: применяем сохранённые ПО ИНСТРУМЕНТУ позиции — смещения
+  // соответствуют именно выбранным в проекте инструментам
+  if (typeof applyToolPositionsFromMap === 'function') applyToolPositionsFromMap();
 
   renderAll();
 

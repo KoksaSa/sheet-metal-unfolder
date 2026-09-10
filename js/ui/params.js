@@ -151,10 +151,21 @@ function renderMetalParams() {
   h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + (punch ? toolThumbSVG(punch, 'punch', 70, 32) : '<span class="text-[9px] text-gray-400">—</span>') + '</div>';
   h += '</div>';
   h += '</div>';
-  // Кнопки своих инструментов: v5.7 — рисование на холсте + DXF-импорт
+  // Кнопки своих инструментов: v5.7 — рисование на холсте + DXF-импорт.
+  // v5.8 FIX: раньше «Нарисовать матрицу» была ВСЕГДА синей (выглядела
+  // как подсвеченная), а «Нарисовать пуансон» — всегда красной (не
+  // читалась как подсветка). Теперь обе кнопки нейтральны, а подсветка
+  // (заливка + кольцо) включается ТОЛЬКО в активном режиме рисования
+  // соответствующего инструмента — как у остальных кнопок приложения.
+  const dieDrawOn = S.toolMode === 'tooldraw' && S.toolDraw && S.toolDraw.type === 'die';
+  const punchDrawOn = S.toolMode === 'tooldraw' && S.toolDraw && S.toolDraw.type === 'punch';
   h += '<div class="grid grid-cols-2 gap-1.5 pt-1">';
-  h += '<button onclick="startToolDraw(\'die\')" title="' + t('drawDieBtnHint') + '" class="text-[9px] h-6 px-2 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700">' + t('drawDieBtn') + '</button>';
-  h += '<button onclick="startToolDraw(\'punch\')" title="' + t('drawPunchBtnHint') + '" class="text-[9px] h-6 px-2 bg-red-600 text-white rounded border border-red-600 hover:bg-red-700">' + t('drawPunchBtn') + '</button>';
+  h += '<button onclick="startToolDraw(\'die\')" title="' + t('drawDieBtnHint') + '" class="text-[9px] h-6 px-2 rounded border transition-all ' + (dieDrawOn
+    ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-600 ring-2 ring-blue-300 dark:ring-blue-500'
+    : 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50') + '">' + t('drawDieBtn') + '</button>';
+  h += '<button onclick="startToolDraw(\'punch\')" title="' + t('drawPunchBtnHint') + '" class="text-[9px] h-6 px-2 rounded border transition-all ' + (punchDrawOn
+    ? 'bg-red-600 hover:bg-red-700 text-white border-red-600 ring-2 ring-red-300 dark:ring-red-500'
+    : 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-950/50') + '">' + t('drawPunchBtn') + '</button>';
   h += '<button onclick="showCustomDieDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customDie') + ' DXF</button>';
   h += '<button onclick="showCustomPunchDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customPunch') + ' DXF</button>';
   h += '</div>';

@@ -1,6 +1,6 @@
 # 📦 Публикация Sheet Metal Unfolder на GitHub
 
-Версия бандла: **v5.7** (подставляется автоматически скриптом `.zscripts/make-github-bundle.sh`).
+Версия бандла: **v5.8** (подставляется автоматически скриптом `.zscripts/make-github-bundle.sh`).
 
 Папка `github-release/` — **готовый git-репозиторий**: все файлы приложения лежат в корне
 (`index.html` в корне → GitHub Pages работает из коробки), плюс:
@@ -25,7 +25,7 @@
 (замените `USERNAME/REPO` на свои логин и имя репозитория):
 
 ```bash
-cd github-release && git init && git add . && git commit -m "v5.7"
+cd github-release && git init && git add . && git commit -m "v5.8"
 ```
 
 ```bash
@@ -48,11 +48,11 @@ git remote add origin https://github.com/USERNAME/REPO.git && git branch -M main
 ## 3️⃣ Создать Release
 
 1. В репозитории: **Releases → Create a new release → Choose a tag** → введите новый тег
-   `v5.7` → Target: `main`.
-2. Название: `Sheet Metal Unfolder v5.7`; в описании можно взять раздел
+   `v5.8` → Target: `main`.
+2. Название: `Sheet Metal Unfolder v5.8`; в описании можно взять раздел
    «Что нового» из `README.md`.
 3. **Attach binaries**: перетащите zip-архив приложения — готовый архив уже собран рядом с
-   бандлом: `public/downloads/sheet-metal-unfolder-github-v5.7.zip`
+   бандлом: `public/downloads/sheet-metal-unfolder-github-v5.8.zip`
    (это то же содержимое, что и `github-release/`).
 4. `Publish release`.
 

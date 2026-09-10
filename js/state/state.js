@@ -42,6 +42,13 @@ const S = {
   punchOffsetY: parseFloat(localStorage.getItem('punchOffsetY')) || 0,
   dieOffsetX: parseFloat(localStorage.getItem('dieOffsetX')) || 0,
   dieOffsetY: parseFloat(localStorage.getItem('dieOffsetY')) || 0,
+  // v5.8: ПОЗИЦИИ ПО ИНСТРУМЕНТАМ — каждый пуансон/матрица запоминает
+  // СВОЁ установленное место: { id инструмента: {x, y} }. Ключ — id
+  // (индексы сдвигаются при удалении своих инструментов). Заполняется
+  // при переключении/перетаскивании, загружается в loadToolPositions;
+  // при возврате к инструменту его позиция восстанавливается.
+  punchPositions: {},
+  diePositions: {},
   bendPointX: parseFloat(localStorage.getItem('bendPointX')) || 0,
   bendPointY: parseFloat(localStorage.getItem('bendPointY')) || 0,
   previewBendIdx: null,
@@ -231,14 +238,22 @@ function setMetalWithUndo(partial) {
 function undoMetal() {
   if (!S.metalUndoHistory.length) return;
   S.metalRedoHistory = [...S.metalRedoHistory, { ...S.metal }];
+  // v5.8: позиции текущих инструментов уходят в карту ДО отката —
+  // индексы могут измениться, смещения должны уйти «своим» инструментам
+  if (typeof syncToolPositionsToMap === 'function') syncToolPositionsToMap();
   Object.assign(S.metal, S.metalUndoHistory.pop());
+  // v5.8: к возвращённым инструментам применяем ИХ сохранённые позиции
+  if (typeof applyToolPositionsFromMap === 'function') applyToolPositionsFromMap();
   maybeAutoUnfold();
 }
 
 function redoMetal() {
   if (!S.metalRedoHistory.length) return;
   S.metalUndoHistory = [...S.metalUndoHistory, { ...S.metal }];
+  // v5.8: позиции — в карту до повтора, после — позиции вернувшихся
+  if (typeof syncToolPositionsToMap === 'function') syncToolPositionsToMap();
   Object.assign(S.metal, S.metalRedoHistory.pop());
+  if (typeof applyToolPositionsFromMap === 'function') applyToolPositionsFromMap();
   maybeAutoUnfold();
 }
 

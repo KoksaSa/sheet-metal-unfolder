@@ -14,8 +14,9 @@
 //     матрицу ручьём (V-канавкой) ВВЕРХ.
 //
 // Новый инструмент появляется на холсте в координатах (0,0) ДО его
-// установки (см. resetToolOffsets / onToolSelectChange) — потом его
-// можно перетащить мышью или стрелками ←→↑↓.
+// установки (см. switchToolIndex / onToolSelectChange) — потом его
+// можно перетащить мышью или стрелками ←→↑↓. Установленное место
+// запоминается по инструменту (v5.8) и восстанавливается при возврате.
 // ═══════════════════════════════════════════════════════════════
 
 // ==================== СМЕНА РЕЖИМА (с очисткой черновика) ====================
@@ -153,14 +154,101 @@ function finishToolDraw() {
   if (typeof showToolImportDialog === 'function') {
     showToolImportDialog(type, profile);
   }
-  if (typeof drawDrawCanvas === 'function') drawDrawCanvas();
+  // v5.8: полный ре-рендер — кнопка «Нарисать пуансон/матрицу» снимает
+  // подсветку сразу по завершении рисования (не только после диалога)
+  if (typeof renderAll === 'function') renderAll();
+  else if (typeof drawDrawCanvas === 'function') drawDrawCanvas();
 }
+
+// ==================== ПОЗИЦИИ ПО ИНСТРУМЕНТАМ (v5.8) ====================
+// v5.8: место установки ЗАПОМИНАЕТСЯ ПО ИНСТРУМЕНТУ. Каждый пуансон/
+// матрица хранит своё смещение в карте S.punchPositions/S.diePositions
+// ({ id инструмента: {x, y} }). При переключении на другой инструмент и
+// ВОЗВРАТЕ обратно позиция ВОССТАНАВЛИВАЕТСЯ; инструмент, который ещё
+// никогда не ставился (нет записи), появляется в (0,0) — как в v5.7.
+// Ключ карты — уникальный id (есть и у встроенных, и у нарисованных/
+// DXF): индексы непригодны — удаление своего инструмента сдвигает список.
+
+// Ключ инструмента в карте позиций
+function _toolPosKey(kind, idx) {
+  let tool = null;
+  try {
+    tool = (kind === 'die') ? getDieByIndex(idx) : getPunchByIndex(idx);
+  } catch (e) { tool = null; }
+  return (tool && tool.id) ? String(tool.id) : (kind + ':' + idx);
+}
+
+// Запомнить ТЕКУЩЕЕ смещение инструмента kind (индекс idx) в карте
+function _syncToolPosToMap(kind, idx) {
+  try {
+    const key = _toolPosKey(kind, idx);
+    const map = (kind === 'die') ? S.diePositions : S.punchPositions;
+    if (!map) return;
+    map[key] = {
+      x: (kind === 'die') ? (S.dieOffsetX || 0) : (S.punchOffsetX || 0),
+      y: (kind === 'die') ? (S.dieOffsetY || 0) : (S.punchOffsetY || 0)
+    };
+  } catch (e) { /* карта не критична для отрисовки */ }
+}
+
+// Применить сохранённое положение инструмента kind (индекс idx):
+// есть запись — восстановить, нет (инструмент новый) — (0,0)
+function _applyToolPosFromMap(kind, idx) {
+  const key = _toolPosKey(kind, idx);
+  const map = (kind === 'die') ? S.diePositions : S.punchPositions;
+  const pos = (map && key) ? map[key] : null;
+  if (kind === 'die') {
+    S.dieOffsetX = pos ? (pos.x || 0) : 0;
+    S.dieOffsetY = pos ? (pos.y || 0) : 0;
+  } else {
+    S.punchOffsetX = pos ? (pos.x || 0) : 0;
+    S.punchOffsetY = pos ? (pos.y || 0) : 0;
+  }
+}
+
+// Публичное API: запомнить позиции ТЕКУЩИХ пуансона и матрицы.
+// Вызывается перед любой сменой punchIndex/dieIndex (undo/redo металла,
+// импорт проекта) и при автосейве — позиции всегда актуальны в карте.
+function syncToolPositionsToMap() {
+  _syncToolPosToMap('punch', S.metal.punchIndex);
+  _syncToolPosToMap('die', S.metal.dieIndex);
+}
+window.syncToolPositionsToMap = syncToolPositionsToMap;
+
+// Публичное API: применить сохранённые позиции ТЕКУЩИХ инструментов
+// (после смены индексов извне: undo/redo металла, импорт проекта)
+function applyToolPositionsFromMap() {
+  _applyToolPosFromMap('punch', S.metal.punchIndex);
+  _applyToolPosFromMap('die', S.metal.dieIndex);
+}
+window.applyToolPositionsFromMap = applyToolPositionsFromMap;
+
+// Единая точка смены индекса инструмента: прежний инструмент ЗАПОМИНАЕТ
+// своё место, выбранный ВОССТАНАВЛИВАЕТ своё (новый — появляется в (0,0)).
+// Используется селектами (onToolSelectChange) и добавлением своих
+// инструментов (applyCustomTool: нарисованные и DXF).
+// prevIdx: индекс ПРЕЖНЕГО инструмента — обязателен, когда индекс в
+// S.metal УЖЕ сменён извне (onToolSelectChange вызывает setMetalWithUndo
+// до переключения — для корректного снимка истории undo); без аргумента
+// берётся текущий (applyCustomTool меняет индекс только здесь).
+function switchToolIndex(kind, newIdx, prevIdx) {
+  if (prevIdx === undefined || prevIdx === null || isNaN(prevIdx)) {
+    prevIdx = (kind === 'die') ? S.metal.dieIndex : S.metal.punchIndex;
+  }
+  _syncToolPosToMap(kind, prevIdx);
+  if (kind === 'die') S.metal.dieIndex = newIdx;
+  else S.metal.punchIndex = newIdx;
+  _applyToolPosFromMap(kind, newIdx);
+  if (typeof saveToolPositions === 'function') saveToolPositions();
+}
+window.switchToolIndex = switchToolIndex;
 
 // ==================== СМЕЩЕНИЯ: НОВЫЙ ИНСТРУМЕНТ → (0,0) ====================
 // v5.7: при появлении на холсте НОВОГО инструмента (нарисованного,
-// импортированного или выбранного в списке) до его установки он
-// появляется в координатах (0,0) — прежнее смещение предыдущего
-// инструмента не наследуется.
+// импортированного) до его установки он появляется в (0,0).
+// v5.8: сброс — только для НОВЫХ инструментов; установленный инструмент
+// запоминает своё место (switchToolIndex выше), при возврате к нему
+// позиция восстанавливается.
 function resetToolOffsets(kind) {
   if (kind === 'die') {
     S.dieOffsetX = 0;
@@ -173,13 +261,24 @@ function resetToolOffsets(kind) {
 }
 window.resetToolOffsets = resetToolOffsets;
 
-// Обработчик смены инструмента в селекте (params.js): при выборе
-// ДРУГОГО инструмента сбрасываем его смещение в (0,0).
+// Обработчик смены инструмента в селекте (params.js). v5.8: позиция
+// запоминается ПО ИНСТРУМЕНТУ — прежний сохраняет своё место, выбранный
+// восстанавливает СВОЁ (никогда не ставившийся — встаёт в (0,0)).
+// ВАЖНО: setMetalWithUndo ДО switchToolIndex — снимок истории undo
+// должен зафиксировать ПРЕЖНИЙ индекс (иначе смена инструмента
+// перестанет отменяться).
 function onToolSelectChange(kind, value) {
   if (isNaN(value)) return;
   const prevIdx = (kind === 'die') ? S.metal.dieIndex : S.metal.punchIndex;
-  if (value !== prevIdx) resetToolOffsets(kind);
   setMetalWithUndo(kind === 'die' ? { dieIndex: value } : { punchIndex: value });
+  // prevIdx передаётся ЯВНО: setMetalWithUndo уже присвоил новый индекс,
+  // а позиции должны уйти ПРЕЖНЕМУ инструменту
+  if (value !== prevIdx) switchToolIndex(kind, value, prevIdx);
+  // Выбор инструмента сохраняем сразу (не ждём 2-секундный автосейв) —
+  // иначе быстрая перезагрузка откатит селект к прежнему инструменту
+  try {
+    if (S.points.length > 0) localStorage.setItem('sheet-metal-project', JSON.stringify({ points: S.points, metal: S.metal, hems: S.hems }));
+  } catch (e) { /* ошибка сохранения не критична */ }
   doUnfold();
   renderAll();
 }
