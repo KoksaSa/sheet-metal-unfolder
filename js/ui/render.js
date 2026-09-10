@@ -101,7 +101,7 @@ function renderHeader() {
     st.textContent = t('segments') + S.points.length +
       (S.points.length > 1 ? ' | ' + t('profileLength') + ': ' + totalLen.toFixed(1) + t('mm') : '') +
       ' | ' + toolLabel;
-    const colors = { draw: '#22c55e', select: '#3b82f6', erase: '#ef4444', measure: '#f59e0b', hem: '#8b5cf6' };
+    const colors = { draw: '#22c55e', select: '#3b82f6', erase: '#ef4444', measure: '#f59e0b', hem: '#8b5cf6', tooldraw: '#ec4899' };
     st.style.borderLeft = '3px solid';
     st.style.borderLeftColor = colors[S.toolMode];
   } else {

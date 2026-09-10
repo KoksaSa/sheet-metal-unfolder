@@ -628,4 +628,11 @@ function drawDrawCanvas() {
   if (S.showToolsOnCanvas && !drawDrawCanvasSimDone) {
     drawToolsOnCanvas(isDark);
   }
+
+  // ==================== ЧЕРНОВИК ИНСТРУМЕНТА (v5.7) ====================
+  // Рисование своего пуансона/матрицы на холсте — поверх всего,
+  // работает в любом режиме (профиль/симуляция/установка).
+  if (S.toolDraw && S.toolMode === 'tooldraw') {
+    drawToolDraft(isDark);
+  }
 }

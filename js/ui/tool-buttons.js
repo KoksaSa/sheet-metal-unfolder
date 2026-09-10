@@ -20,7 +20,9 @@ function renderToolButtons() {
   const btnInactive = 'border-gray-200 dark:border-gray-700 hover:bg-green-50 hover:text-green-700 dark:hover:bg-green-950/30';
   c.innerHTML = tools.map(tl => {
     const active = S.toolMode === tl.mode;
-    return '<button onclick="S.toolMode=\'' + tl.mode + '\';S.drawFromIdx=null;renderAll()" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"><i data-lucide="' + tl.icon + '" class="h-5 w-5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
+    // v5.7: смена режима через setToolMode — сбрасывает черновик
+    // рисуемого инструмента при выходе из режима рисования инструмента
+    return '<button onclick="setToolMode(\'' + tl.mode + '\')" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"><i data-lucide="' + tl.icon + '" class="h-5 w-5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
   }).join('');
 
   // Кнопка-тумблер «Симуляция гибки» (включает режим симуляции).
@@ -36,6 +38,8 @@ function renderToolButtons() {
     S.showToolsOnCanvas = !S.showToolsOnCanvas;
     S.simMode = S.showToolsOnCanvas;
     if (S.showToolsOnCanvas) {
+      // v5.7: выход из рисования инструмента при включении симуляции
+      if (S.toolMode === 'tooldraw' && S.toolDraw) S.toolDraw = null;
       S.toolMode = 'select';
       // При входе в симуляцию «Установить инструмент» по умолчанию ВЫКЛ:
       // инструменты видны, но заблокированы. Пользователь должен явно

@@ -130,7 +130,7 @@ function renderMetalParams() {
   const installOn = !S.toolLocked && S.showToolsOnCanvas;
   h += '<div class="flex items-center justify-between rounded-md ' + (installOn ? 'bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50' : 'bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700') + ' px-2 py-1.5"><label class="text-xs font-semibold flex items-center gap-1.5 cursor-pointer ' + (installOn ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400') + '" title="' + t('installToolHint') + '"><i data-lucide="' + (installOn ? 'unlock' : 'lock') + '" class="h-3.5 w-3.5"></i>' + t('installTool') + '</label><div class="switch' + (installOn ? ' active' : '') + '" id="install-tool-switch" onclick="var _on=(!S.toolLocked && S.showToolsOnCanvas); if(_on){S.toolLocked=true;} else {S.toolLocked=false; S.showToolsOnCanvas=true; S.simMode=true;} renderMetalParams(); if(typeof renderToolButtons===\'function\')renderToolButtons(); if(typeof drawDrawCanvas===\'function\')drawDrawCanvas();"></div></div>';
   h += '<div class="grid grid-cols-2 gap-2">';
-  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('dieSelect') + '</label><select onchange="setMetalWithUndo({dieIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
+  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('dieSelect') + '</label><select onchange="onToolSelectChange(\'die\', Number(this.value))" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
   if (allDies.length === 0) {
     h += '<option value="0" selected>' + (S.lang === 'en' ? 'No dies yet' : 'Нет матриц — добавьте свою') + '</option>';
   }
@@ -140,7 +140,7 @@ function renderMetalParams() {
   h += '</select>';
   h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + (die ? toolThumbSVG(die, 'die', 70, 32) : '<span class="text-[9px] text-gray-400">—</span>') + '</div>';
   h += '</div>';
-  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="setMetalWithUndo({punchIndex:Number(this.value)});doUnfold();renderAll()" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
+  h += '<div class="space-y-1"><label class="text-[10px] text-gray-500">' + t('punchSelect') + '</label><select onchange="onToolSelectChange(\'punch\', Number(this.value))" class="w-full h-7 text-xs rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-1">';
   if (allPunches.length === 0) {
     h += '<option value="0" selected>' + (S.lang === 'en' ? 'No punches yet' : 'Нет пуансонов — добавьте свой') + '</option>';
   }
@@ -151,10 +151,12 @@ function renderMetalParams() {
   h += '<div class="mt-1 rounded border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/60 h-9 flex items-center justify-center overflow-hidden">' + (punch ? toolThumbSVG(punch, 'punch', 70, 32) : '<span class="text-[9px] text-gray-400">—</span>') + '</div>';
   h += '</div>';
   h += '</div>';
-  // Кнопки своих инструментов
+  // Кнопки своих инструментов: v5.7 — рисование на холсте + DXF-импорт
   h += '<div class="grid grid-cols-2 gap-1.5 pt-1">';
-  h += '<button onclick="showCustomDieDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customDie') + '</button>';
-  h += '<button onclick="showCustomPunchDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customPunch') + '</button>';
+  h += '<button onclick="startToolDraw(\'die\')" title="' + t('drawDieBtnHint') + '" class="text-[9px] h-6 px-2 bg-blue-600 text-white rounded border border-blue-600 hover:bg-blue-700">' + t('drawDieBtn') + '</button>';
+  h += '<button onclick="startToolDraw(\'punch\')" title="' + t('drawPunchBtnHint') + '" class="text-[9px] h-6 px-2 bg-red-600 text-white rounded border border-red-600 hover:bg-red-700">' + t('drawPunchBtn') + '</button>';
+  h += '<button onclick="showCustomDieDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customDie') + ' DXF</button>';
+  h += '<button onclick="showCustomPunchDialog()" class="text-[9px] h-6 px-2 bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 rounded border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-950/50">' + t('customPunch') + ' DXF</button>';
   h += '</div>';
   // Чекбокс: учитывать толщину матрицы
   h += '<div class="flex items-center justify-between pt-1"><label class="text-[10px] text-gray-500 flex items-center gap-1"><i data-lucide="ruler" class="h-3 w-3"></i>' + t('checkDieHeight') + '</label><div class="switch' + (S.checkDieHeight ? ' active' : '') + '" onclick="S.checkDieHeight=!S.checkDieHeight;doUnfold();renderAll()"></div></div>';

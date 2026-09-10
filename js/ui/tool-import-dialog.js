@@ -4,9 +4,10 @@
 // ═══════════════════════════════════════════════════════════════
 
 // Временные данные импорта
-let _importProfile = null;   // { chains, width, height, minX, maxX, minY, maxY }
+let _importProfile = null;   // { chains, width, height, minX, maxX, minY, maxY, tipX? }
 let _importType = 'die';     // 'die' | 'punch'
 let _importFileName = '';
+let _importDrawn = false;    // v5.7: профиль нарисован на холсте (не DXF)
 
 function showCustomDieDialog() { showToolImportDialog('die'); }
 function showCustomPunchDialog() { showToolImportDialog('punch'); }
@@ -36,9 +37,46 @@ function drawToolProfileSVG(profile, viewW, viewH) {
     '</svg>';
 }
 
-function showToolImportDialog(type) {
+// v5.7: автозаполнение полей диалога из профиля (общее для DXF-импорта
+// и нарисованного на холсте контура). Возвращает имя по умолчанию.
+// isDrawn: контур нарисован на холсте — эвристику радиуса «по ширине»
+// (из DXF-пути) не применяем, ставим стандартный R1.
+function fillToolImportFromProfile(profile, drawnHint, isDrawn) {
+  const prev = document.getElementById('tool-preview');
+  if (prev) prev.innerHTML = drawToolProfileSVG(profile, 280, 100);
+  const dims = document.getElementById('tool-dims');
+  if (dims) {
+    dims.textContent = t('widthShort') + ': ' + profile.width.toFixed(1) + ' ' + t('mm') +
+      '   ' + t('heightShort') + ': ' + profile.height.toFixed(1) + ' ' + t('mm') +
+      (drawnHint ? '   · ' + drawnHint : '');
+  }
+  const isDie = _importType === 'die';
+  const swEl = document.getElementById('tool-swidth');
+  if (swEl && !swEl.value) swEl.value = Math.max(1, Math.round(profile.width));
+  const htEl = document.getElementById('tool-height');
+  if (htEl && !htEl.value) htEl.value = Math.max(1, Math.round(profile.height));
+  if (isDie) {
+    const vwEl = document.getElementById('tool-vwidth');
+    if (vwEl && !vwEl.value) {
+      const vEst = (typeof estimateDieVWidth === 'function') ? estimateDieVWidth(profile) : null;
+      if (vEst) vwEl.value = Math.max(1, Math.round(vEst));
+    }
+  } else {
+    const rdEl = document.getElementById('tool-radius');
+    if (rdEl && !rdEl.value) rdEl.value = isDrawn ? 1 : Math.max(0.5, Math.round(profile.width * 5) / 10);
+  }
+  // Имя по умолчанию: порядковый номер своего инструмента
+  const tools = loadCustomTools();
+  const n = (isDie ? tools.customDies.length : tools.customPunches.length) + 1;
+  return isDie
+    ? (S.lang === 'ru' ? 'Матрица ' + n : 'Die ' + n)
+    : (S.lang === 'ru' ? 'Пуансон ' + n : 'Punch ' + n);
+}
+
+function showToolImportDialog(type, presetProfile) {
   _importType = type;
-  _importProfile = null;
+  _importProfile = (presetProfile && presetProfile.chains && presetProfile.chains.length) ? presetProfile : null;
+  _importDrawn = !!_importProfile;
   _importFileName = '';
   const tools = loadCustomTools();
   const isDie = type === 'die';
@@ -101,9 +139,17 @@ function showToolImportDialog(type) {
   h += '</div>';
   showDialog(h);
   refreshIcons();
-  // Превью по умолчанию
+  // Превью: нарисованный на холсте контур (v5.7) или пустое поле
   const prev = document.getElementById('tool-preview');
-  if (prev) prev.innerHTML = drawToolProfileSVG(null, 280, 100);
+  if (prev) prev.innerHTML = drawToolProfileSVG(_importProfile, 280, 100);
+  if (_importProfile) {
+    // v5.7: контур нарисован на холсте — превью + автозаполнение + имя
+    const defName = fillToolImportFromProfile(_importProfile, t('toolDrawnOnCanvas'), true);
+    const nameEl = document.getElementById('tool-name');
+    if (nameEl && !nameEl.value.trim()) nameEl.value = defName;
+    const info = document.getElementById('tool-dxf-info');
+    if (info) info.textContent = t('toolDrawnOnCanvas');
+  }
   setTimeout(() => { const el = document.getElementById('tool-name'); if (el) el.focus(); }, 100);
 }
 
@@ -160,6 +206,7 @@ function applyCustomTool() {
     const nameRu = (document.getElementById('tool-name').value || '').trim();
     if (!_importProfile) { toast(t('dxfPleaseImport'), 'error'); return; }
     const profile = _importProfile;
+    const wasDrawn = _importDrawn;
     // Читаем параметры из полей ввода (автозаполняются из DXF, редактируемы)
     const numVal = (id, fallback) => {
       const el = document.getElementById(id);
@@ -201,8 +248,17 @@ function applyCustomTool() {
       S.metal.punchIndex = PUNCHES.length + (loadCustomTools().customPunches.length - 1);
     }
     closeDialog();
+    // v5.7: НОВЫЙ инструмент (нарисованный или из DXF) появляется на
+    // холсте в координатах (0,0) ДО его установки — смещение прежнего
+    // не наследуется; сразу включаем режим «Установить инструмент»,
+    // чтобы новый инструмент было видно и можно было перетащить.
+    if (typeof resetToolOffsets === 'function') resetToolOffsets(_importType);
+    S.showToolsOnCanvas = true;
+    S.simMode = true;
+    S.toolLocked = false;
     doUnfold();
     renderAll();
+    if (typeof toast === 'function') toast(t(wasDrawn ? 'toolDrawDone' : 'toolAddDone'));
   } catch (err) {
     console.error('applyCustomTool error:', err);
     toast(t('importError') + ': ' + err.message, 'error');

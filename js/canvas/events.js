@@ -110,6 +110,25 @@ drawCanvas.addEventListener('mousedown', e => {
     // Клик по пустому месту — добавляем точку
     addPoint(p);
     renderAll();
+  } else if (e.button === 0 && S.toolMode === 'tooldraw' && S.toolDraw) {
+    // ══ РЕЖИМ РИСОВАНИЯ ИНСТРУМЕНТА (v5.7) ══
+    // ЛКМ — точка контура своего пуансона/матрицы; клик по первой
+    // точке (≥ 3 точек) — замкнуть контур и завершить рисование.
+    const w = c2w(cx, cy);
+    const p = snapToolDrawPoint(w);
+    const pts = S.toolDraw.points || [];
+    if (pts.length >= 3) {
+      const f = w2c(pts[0].x, pts[0].y);
+      if (Math.sqrt((f.cx - cx) ** 2 + (f.cy - cy) ** 2) < 15) {
+        e.preventDefault();
+        finishToolDraw();
+        return;
+      }
+    }
+    addToolDrawPoint(p);
+  } else if (e.button === 2 && S.toolMode === 'tooldraw' && S.toolDraw) {
+    // ПКМ — убрать последнюю точку черновика
+    undoToolDrawPoint();
   } else if (e.button === 0 && S.toolMode === 'select') {
     // ══ РЕЖИМ СЕЛЕКТА ══
 
@@ -258,7 +277,15 @@ drawCanvas.addEventListener('mousedown', e => {
 });
 
 // Замыкание контура двойным кликом по первой точке
+// v5.7: двойной клик также завершает рисование инструмента (≥ 3 точек)
 drawCanvas.addEventListener('dblclick', e => {
+  if (S.toolMode === 'tooldraw' && S.toolDraw) {
+    if ((S.toolDraw.points || []).length >= 3) {
+      e.preventDefault();
+      finishToolDraw();
+    }
+    return;
+  }
   if (S.toolMode !== 'draw' || S.points.length < 3) return;
   const r = drawCanvas.getBoundingClientRect();
   const cx = e.clientX - r.left, cy = e.clientY - r.top;
@@ -352,7 +379,7 @@ drawCanvas.addEventListener('mousemove', e => {
 
   // Cursor (только если не установлен pointer выше)
   if (drawCanvas.style.cursor !== 'pointer') {
-    if (S.toolMode === 'draw') drawCanvas.style.cursor = 'crosshair';
+    if (S.toolMode === 'draw' || S.toolMode === 'tooldraw') drawCanvas.style.cursor = 'crosshair';
     else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy) || isNearDie(cx, cy)) ? 'grab' : 'default';
     else if (S.toolMode === 'erase') drawCanvas.style.cursor = S.hoveredPt !== null ? 'pointer' : 'default';
     else if (S.toolMode === 'measure') drawCanvas.style.cursor = 'crosshair';
@@ -426,6 +453,9 @@ drawCanvas.addEventListener('wheel', e => {
 // ==================== КОНТЕКСТНОЕ МЕНЮ ====================
 drawCanvas.addEventListener('contextmenu', e => {
   e.preventDefault();
+  // v5.7: в режиме рисования инструмента ПКМ убирает последнюю точку
+  // (обработчик mousedown) — контекстное меню не показываем
+  if (S.toolMode === 'tooldraw') return;
   const r = drawCanvas.getBoundingClientRect();
   const cx = e.clientX - r.left, cy = e.clientY - r.top;
   const w = c2w(cx, cy);

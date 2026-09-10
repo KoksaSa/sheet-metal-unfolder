@@ -10,6 +10,9 @@ const S = {
   hemEditing: null, // {segIndex} when hem dialog is open
   hemHoveredSeg: -1,
   toolMode: 'draw',
+  // v5.7: черновик рисуемого на холсте инструмента:
+  // { type: 'punch'|'die', points: [{x,y},...] } в режиме toolMode='tooldraw'
+  toolDraw: null,
   lang: localStorage.getItem('sheet-metal-lang') || 'ru',
   snapToGrid: true,
   gridSize: 5,

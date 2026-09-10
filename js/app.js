@@ -21,9 +21,19 @@ document.addEventListener('keydown', e => {
   const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA';
   const mod = e.ctrlKey || e.metaKey;
 
+  // v5.7: рисование своего инструмента на холсте — горячие клавиши
+  // (Enter — завершить, Backspace — убрать точку, Esc — отмена ниже)
+  if (S.toolMode === 'tooldraw' && S.toolDraw) {
+    if (e.key === 'Enter') { e.preventDefault(); finishToolDraw(); return; }
+    if (e.key === 'Backspace') { e.preventDefault(); undoToolDrawPoint(); return; }
+  }
+
   // Undo / Redo работают и в полях ввода (как в браузере), и вне их
   if (mod && e.code === 'KeyZ') {
     e.preventDefault();
+    // v5.7: в режиме рисования инструмента Ctrl+Z убирает точку ЧЕРНОВИКА
+    // (а не точку профиля детали)
+    if (S.toolMode === 'tooldraw' && S.toolDraw) { undoToolDrawPoint(); return; }
     if (e.shiftKey) { undoMetal(); renderAll(); }
     else doUndo();
     return;
@@ -55,11 +65,13 @@ document.addEventListener('keydown', e => {
 
   const key = e.key.toLowerCase();
   switch (key) {
-    case 'd': S.toolMode = 'draw'; renderAll(); break;
-    case 'v': S.toolMode = 'select'; S.drawFromIdx = null; renderAll(); break;
-    case 'e': S.toolMode = 'erase'; S.drawFromIdx = null; renderAll(); break;
-    case 'h': S.toolMode = 'hem'; S.drawFromIdx = null; renderAll(); break;
-    case 'm': S.toolMode = 'measure'; S.drawFromIdx = null; measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
+    // v5.7: смена режима через setToolMode — сбрасывает черновик
+    // инструмента при выходе из рисования инструмента
+    case 'd': setToolMode('draw'); break;
+    case 'v': setToolMode('select'); break;
+    case 'e': setToolMode('erase'); break;
+    case 'h': setToolMode('hem'); break;
+    case 'm': setToolMode('measure'); measureStart = null; measureEnd = null; measureStep = 0; renderAll(); break;
     case 'f': S.viewport = { offsetX: canvasW / 2, offsetY: canvasH / 2, scale: 3 }; drawDrawCanvas(); break;
     // Стрелки: в режиме установки — двигают АКТИВНЫЙ инструмент
     // (пуансон ИЛИ матрицу — по последнему клику; по умолчанию пуансон;
@@ -69,7 +81,7 @@ document.addEventListener('keydown', e => {
     // иначе сравнение e.key === 'arrowleft' всегда false и шаг всегда +1.
     case 'arrowleft':
     case 'arrowright':
-      if (S.showToolsOnCanvas) {
+      if (S.showToolsOnCanvas && S.toolMode !== 'tooldraw') {
         e.preventDefault();
         if (S.toolLocked) {
           S.simFlipX = !S.simFlipX;
@@ -81,7 +93,7 @@ document.addEventListener('keydown', e => {
       break;
     case 'arrowup':
     case 'arrowdown':
-      if (S.showToolsOnCanvas) {
+      if (S.showToolsOnCanvas && S.toolMode !== 'tooldraw') {
         e.preventDefault();
         if (S.toolLocked) {
           S.simFlipY = !S.simFlipY;
@@ -92,6 +104,12 @@ document.addEventListener('keydown', e => {
       }
       break;
     case 'escape':
+      // v5.7: Esc в режиме рисования инструмента — отмена рисования
+      if (S.toolMode === 'tooldraw' && S.toolDraw) {
+        e.preventDefault();
+        cancelToolDraw();
+        break;
+      }
       // Сброс предпросмотра гиба
       if (S.previewBendIdx !== null) {
         e.preventDefault();

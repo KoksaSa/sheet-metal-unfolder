@@ -266,12 +266,19 @@ function estimateDieVWidth(profile) {
   });
   if (xs.length < 2) return null;
   xs.sort((a, b) => a - b);
-  // Наибольший зазор между соседними x — это V-отверстие
+  // v5.7 FIX: ручей — только ВНУТРЕННИЙ зазор (между точками НЕ на
+  // краях контура), как в findDieGrooveCenter. Раньше брался просто
+  // НАИБОЛЬШИЙ зазор — для типовой матрицы (плечи шире ручья) он
+  // приходился на плечо, и V-ширина завышалась.
+  const minX = xs[0], maxX = xs[xs.length - 1];
   let gap = 0;
   for (let i = 0; i < xs.length - 1; i++) {
+    if (xs[i] <= minX + EPS) continue;          // точка на левом краю
+    if (xs[i + 1] >= maxX - EPS) continue;      // точка на правом краю
     const g = xs[i + 1] - xs[i];
     if (g > gap) gap = g;
   }
+  if (gap <= EPS) return null;
   // Зазор должен быть заметной частью ширины (но не всей шириной — иначе контур разорван)
   if (gap < profile.width * 0.02 || gap > profile.width * 0.95) return null;
   return gap;
