@@ -179,6 +179,8 @@ function drawDrawCanvas() {
       drawBendForceLabel(drawCtx, isDark, animInfo, prof.activeBendIdx);
       // Упор (задний упор гибочного пресса)
       if (typeof drawStopper === 'function') drawStopper(prof, isDark);
+      // v5.9: предупреждение о касании контура профиля и пуансона
+      if (typeof drawPunchContactWarning === 'function') drawPunchContactWarning(isDark);
     }
 
     drawDrawCanvasSimDone = true;

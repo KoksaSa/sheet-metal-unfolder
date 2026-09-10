@@ -4,14 +4,15 @@
 // ═══════════════════════════════════════════════════════════════
 
 // ==================== TOAST ====================
-function toast(msg, type = 'success') {
+function toast(msg, type = 'success', ms = 2500) {
   const c = document.getElementById('toast-container');
   if (!c) return;
   const d = document.createElement('div');
   d.className = 'toast toast-' + type;
   d.textContent = msg;
   c.appendChild(d);
-  setTimeout(() => d.remove(), 2500);
+  // v5.9: ms — необязательная длительность (предупреждения живут дольше)
+  setTimeout(() => d.remove(), (Number.isFinite(ms) && ms > 0) ? ms : 2500);
 }
 
 // ==================== ТЕМА И ЯЗЫК ====================
