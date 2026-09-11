@@ -8,9 +8,9 @@ function renderStats() {
   const c = document.getElementById('stats-container');
   if (!c) return;
   if (S.points.length < 2) { c.innerHTML = ''; return; }
+  // v5.9: длина профиля — по дугам для радиусных сегментов
   const totalLen = S.points.slice(0, -1).reduce((s, p, i) => {
-    const dx = S.points[i + 1].x - p.x, dy = S.points[i + 1].y - p.y;
-    return s + Math.sqrt(dx * dx + dy * dy);
+    return s + ((typeof profileSegLength === 'function') ? profileSegLength(S.points, i) : Math.hypot(S.points[i + 1].x - p.x, S.points[i + 1].y - p.y));
   }, 0);
   c.innerHTML = '<hr class="my-3 border-gray-200 dark:border-gray-700"><div class="rounded-lg bg-gray-50 dark:bg-gray-700/50 p-2.5 space-y-1"><p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium">' + t('profileStats') + '</p><div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs"><span class="text-gray-500 dark:text-gray-400">' + t('pointsLabel') + '</span><span class="text-right font-mono tabular-nums">' + S.points.length + ' ' + pointWord(S.points.length) + '</span><span class="text-gray-500 dark:text-gray-400">' + t('profileLength') + '</span><span class="text-right font-mono tabular-nums">' + totalLen.toFixed(1) + ' mm</span></div></div>';
 }
@@ -27,8 +27,9 @@ function renderPointsTable() {
   h += '<div class="font-medium text-gray-500 dark:text-gray-400 px-2 py-1 border-b sticky top-0 bg-white dark:bg-gray-800"></div>';
   h += '<div class="font-medium text-gray-500 dark:text-gray-400 px-2 py-1 border-b sticky top-0 bg-white dark:bg-gray-800"></div>';
   S.points.forEach((p, i) => {
-    h += '<div class="px-2 py-0.5 font-mono tabular-nums text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700/30">' + i + '</div>';
-    h += '<div class="px-2 py-0.5 font-mono tabular-nums border-b border-gray-100 dark:border-gray-700/30">' + p.x.toFixed(1) + ', ' + p.y.toFixed(1) + '</div>';
+    // v5.9: точки радиусной дуги помечаются «⌒»
+    h += '<div class="px-2 py-0.5 font-mono tabular-nums text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700/30">' + (p._radiusArc ? '\u2312 ' : '') + i + '</div>';
+    h += '<div class="px-2 py-0.5 font-mono tabular-nums border-b border-gray-100 dark:border-gray-700/30' + (p._radiusArc ? ' text-teal-600 dark:text-teal-400' : '') + '">' + p.x.toFixed(1) + ', ' + p.y.toFixed(1) + '</div>';
     h += '<button onclick="editPoint(' + i + ')" class="px-1 py-0.5 border-b border-gray-100 dark:border-gray-700/30 hover:bg-green-50 dark:hover:bg-green-950/30 text-green-600 dark:text-green-400 cursor-pointer" title="' + t('edit') + '"><i data-lucide="pencil" class="h-2.5 w-2.5"></i></button>';
     h += '<button onclick="removePoint(' + i + ');renderAll()" class="px-1 py-0.5 border-b border-gray-100 dark:border-gray-700/30 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-500 cursor-pointer" title="' + t('delete') + '"><i data-lucide="x" class="h-2.5 w-2.5"></i></button>';
   });

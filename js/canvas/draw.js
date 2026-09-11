@@ -3,6 +3,51 @@
 // размеры, точки, кайма, симуляция гибочного станка (2D)
 // ═══════════════════════════════════════════════════════════════
 
+// v5.9: Путь профиля с ГЛАДКИМИ радиусными дугами. Соседние точки с
+// одинаковой меткой _radiusArc лежат на одной окружности (центр/радиус
+// в метке) — пару соединяем не хордой, а подразделённой дугой. Прямые
+// сегменты (без метки) — как обычно. Строит путь (beginPath…), НЕ
+// штрихует — вызывающий задаёт стиль и вызывает stroke().
+function pathProfile(ctx, pts) {
+  ctx.beginPath();
+  if (!pts || !pts.length) return;
+  const f = w2c(pts[0].x, pts[0].y);
+  ctx.moveTo(f.cx, f.cy);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const A = pts[i], B = pts[i + 1];
+    const am = A._radiusArc, bm = B._radiusArc;
+    if (am && bm && am.id === bm.id && Number.isFinite(am.cx) && Number.isFinite(am.cy) && am.r > 0) {
+      // Хорда дуги: подводим дугу (6 подшагов на пару — визуально гладко)
+      const aA = Math.atan2(A.y - am.cy, A.x - am.cx);
+      const aB = Math.atan2(B.y - am.cy, B.x - am.cx);
+      const d = normAngle(aB - aA);
+      if (Math.abs(d) > 1e-9) {
+        const SUB = 6;
+        for (let k = 1; k <= SUB; k++) {
+          const a = aA + d * k / SUB;
+          const c = w2c(am.cx + Math.cos(a) * am.r, am.cy + Math.sin(a) * am.r);
+          ctx.lineTo(c.cx, c.cy);
+        }
+        continue;
+      }
+    }
+    const c = w2c(B.x, B.y);
+    ctx.lineTo(c.cx, c.cy);
+  }
+}
+
+// v5.9: длина сегмента профиля: для дуги — по ДУГЕ (r·Δφ), для прямой — хорда
+function profileSegLength(pts, i) {
+  const A = pts[i], B = pts[i + 1];
+  const am = A._radiusArc, bm = B._radiusArc;
+  if (am && bm && am.id === bm.id && Number.isFinite(am.cx) && Number.isFinite(am.cy) && am.r > 0) {
+    const aA = Math.atan2(A.y - am.cy, A.x - am.cx);
+    const aB = Math.atan2(B.y - am.cy, B.x - am.cx);
+    return am.r * Math.abs(normAngle(aB - aA));
+  }
+  return dist(A, B);
+}
+
 function drawDrawCanvas() {
   if (!drawCtx) return;
   const dpr = window.devicePixelRatio || 1;
@@ -156,8 +201,16 @@ function drawDrawCanvas() {
     // Накопительный профиль (все выполненные гибы + анимируемый)
     const prof = computeAccumulatedProfile(animInfo);
 
-    // === МАТРИЦА И ПУАНСОН (рисуются под профилем) ===
-    drawPressBrakeTooling(isDark, animInfo);
+    // v5.9: коллизия контура с телом пуансона при ТЕКУЩЕМ положении
+    // пуансона (в покое / во время анимации — «живой» отклик)
+    let punchCollision = null;
+    if (prof && prof.pts && typeof detectPunchCollision === 'function') {
+      punchCollision = detectPunchCollision(prof.pts, punchTipWorldY(animInfo));
+    }
+
+    // === МАТРИЦА И ПУАНСОНОМ (рисуются под профилем) ===
+    // v5.9: при коллизии пуансон подсвечивается красным
+    drawPressBrakeTooling(isDark, animInfo, punchCollision);
 
     if (prof && prof.pts) {
       // Профиль: если есть согнутые гибы или анимация — оранжевым,
@@ -179,8 +232,10 @@ function drawDrawCanvas() {
       drawBendForceLabel(drawCtx, isDark, animInfo, prof.activeBendIdx);
       // Упор (задний упор гибочного пресса)
       if (typeof drawStopper === 'function') drawStopper(prof, isDark);
-      // v5.9: предупреждение о касании контура профиля и пуансона
-      if (typeof drawPunchContactWarning === 'function') drawPunchContactWarning(isDark);
+      // v5.9: точки касания контура с пуансоном — красные маркеры
+      if (punchCollision && typeof drawPunchCollisionMarks === 'function') {
+        drawPunchCollisionMarks(punchCollision, isDark);
+      }
     }
 
     drawDrawCanvasSimDone = true;
@@ -199,13 +254,7 @@ function drawDrawCanvas() {
     drawCtx.lineWidth = bandW;
     drawCtx.lineCap = 'butt';
     drawCtx.lineJoin = 'round';
-    drawCtx.beginPath();
-    const bf = w2c(S.points[0].x, S.points[0].y);
-    drawCtx.moveTo(bf.cx, bf.cy);
-    for (let i = 1; i < S.points.length; i++) {
-      const p = w2c(S.points[i].x, S.points[i].y);
-      drawCtx.lineTo(p.cx, p.cy);
-    }
+    pathProfile(drawCtx, S.points); // v5.9: гладкие дуги радиусных гибов
     drawCtx.stroke();
     drawCtx.restore();
 
@@ -214,13 +263,7 @@ function drawDrawCanvas() {
     drawCtx.strokeStyle = isDark ? '#22c55e22' : '#16a34a22';
     drawCtx.lineWidth = 8;
     drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
-    drawCtx.beginPath();
-    const gf = w2c(S.points[0].x, S.points[0].y);
-    drawCtx.moveTo(gf.cx, gf.cy);
-    for (let i = 1; i < S.points.length; i++) {
-      const p = w2c(S.points[i].x, S.points[i].y);
-      drawCtx.lineTo(p.cx, p.cy);
-    }
+    pathProfile(drawCtx, S.points); // v5.9
     drawCtx.stroke();
     drawCtx.restore();
 
@@ -228,13 +271,7 @@ function drawDrawCanvas() {
     drawCtx.strokeStyle = isDark ? '#22c55e' : '#16a34a';
     drawCtx.lineWidth = 2.5;
     drawCtx.lineCap = 'round'; drawCtx.lineJoin = 'round';
-    drawCtx.beginPath();
-    const f = w2c(S.points[0].x, S.points[0].y);
-    drawCtx.moveTo(f.cx, f.cy);
-    for (let i = 1; i < S.points.length; i++) {
-      const p = w2c(S.points[i].x, S.points[i].y);
-      drawCtx.lineTo(p.cx, p.cy);
-    }
+    pathProfile(drawCtx, S.points); // v5.9
     drawCtx.stroke();
 
     // === Лицевая сторона (голубая полоска вдоль профиля) ===
@@ -256,7 +293,8 @@ function drawDrawCanvas() {
       // 1. Подписи длин сегментов
       drawCtx.font = '10px monospace';
       for (let i = 0; i < S.points.length - 1; i++) {
-        const sl = dist(S.points[i], S.points[i + 1]);
+        // v5.9: для сегментов дуги — длина по ДУГЕ (r·Δφ), не хорда
+        const sl = profileSegLength(S.points, i);
         const mx = (S.points[i].x + S.points[i + 1].x) / 2;
         const my = (S.points[i].y + S.points[i + 1].y) / 2;
         const mc = w2c(mx, my);
@@ -439,10 +477,12 @@ function drawDrawCanvas() {
       const hov = S.hoveredPt === i;
       const isF = i === 0, isL = i === S.points.length - 1;
       const isActive = S.toolMode === 'draw' && S.drawFromIdx === 0 && i === 0;
+      // v5.9: точки радиусной дуги — мельче и бирюзовые (не вершины профиля)
+      const isArcPt = !!pt._radiusArc;
       if (hov || isActive) {
         drawCtx.beginPath();
-        drawCtx.arc(cx, cy, hov ? 14 : 12, 0, Math.PI * 2);
-        drawCtx.fillStyle = isActive ? '#3b82f620' : '#22c55e15';
+        drawCtx.arc(cx, cy, hov ? (isArcPt ? 10 : 14) : (isArcPt ? 9 : 12), 0, Math.PI * 2);
+        drawCtx.fillStyle = isActive ? '#3b82f620' : (isArcPt ? '#0d948815' : '#22c55e15');
         drawCtx.fill();
       }
       // Кольцо вокруг активной точки
@@ -456,11 +496,11 @@ function drawDrawCanvas() {
         drawCtx.setLineDash([]);
       }
       drawCtx.beginPath();
-      drawCtx.arc(cx, cy, hov ? 8 : 6, 0, Math.PI * 2);
-      drawCtx.fillStyle = isF ? '#22c55e' : isL ? '#ef4444' : (isDark ? '#22c55e' : '#16a34a');
+      drawCtx.arc(cx, cy, hov ? (isArcPt ? 6 : 8) : (isArcPt ? 4 : 6), 0, Math.PI * 2);
+      drawCtx.fillStyle = isF ? '#22c55e' : isL ? '#ef4444' : (isArcPt ? (isDark ? '#2dd4bf' : '#0d9488') : (isDark ? '#22c55e' : '#16a34a'));
       drawCtx.fill();
       drawCtx.beginPath();
-      drawCtx.arc(cx, cy, hov ? 3.5 : 2.5, 0, Math.PI * 2);
+      drawCtx.arc(cx, cy, hov ? (isArcPt ? 2.5 : 3.5) : (isArcPt ? 1.8 : 2.5), 0, Math.PI * 2);
       drawCtx.fillStyle = isDark ? '#0a0a0a' : '#fff';
       drawCtx.fill();
       // Label — только вершины гибов (совпадает с нумерацией развёртки)
@@ -537,6 +577,85 @@ function drawDrawCanvas() {
     drawCtx.beginPath();
     drawCtx.arc(sp.cx, sp.cy, 12, 0, Math.PI * 2);
     drawCtx.stroke();
+  }
+
+  // ══ v5.9: ЧЕРНОВИК РАДИУСНОЙ ДУГИ (режим «Дуга») ══
+  // Есть конец — сегментированная дуга с подписью (живой предпросмотр
+  // из диалога: радиус/сегменты/сторона); нет конца — резинка от старта.
+  if (S.toolMode === 'arc' && S.arcDraft && !drawDrawCanvasSimDone) {
+    const d = S.arcDraft;
+    const sc = w2c(d.startPt.x, d.startPt.y);
+    if (d.endPt && typeof arcDraftGeometry === 'function') {
+      const geo = arcDraftGeometry(d);
+      if (geo && geo.pts) {
+        drawCtx.save();
+        // Сегментированная дуга — бирюзовый пунктир по хордам
+        drawCtx.strokeStyle = isDark ? '#2dd4bf' : '#0d9488';
+        drawCtx.lineWidth = 2;
+        drawCtx.setLineDash([7, 4]);
+        drawCtx.beginPath();
+        const c0 = w2c(geo.pts[0].x, geo.pts[0].y);
+        drawCtx.moveTo(c0.cx, c0.cy);
+        geo.pts.forEach(function (pp) {
+          const c = w2c(pp.x, pp.y);
+          drawCtx.lineTo(c.cx, c.cy);
+        });
+        drawCtx.stroke();
+        drawCtx.setLineDash([]);
+        // Вершины сегментов — будущие линии гиба
+        geo.pts.forEach(function (pp) {
+          const c = w2c(pp.x, pp.y);
+          drawCtx.beginPath();
+          drawCtx.arc(c.cx, c.cy, 2.5, 0, Math.PI * 2);
+          drawCtx.fillStyle = isDark ? '#2dd4bf' : '#0d9488';
+          drawCtx.fill();
+        });
+        // Подпись: R, охват, угол сегмента
+        const midPt = geo.pts[Math.floor(geo.pts.length / 2)];
+        const mc = w2c(midPt.x, midPt.y);
+        const perDeg = (geo.perSeg * 180 / Math.PI).toFixed(1);
+        const sweepDeg = (geo.sweep * 180 / Math.PI).toFixed(0);
+        const lbl = 'R' + geo.R.toFixed(1) + ' \u00b7 ' + sweepDeg + '\u00b0 \u00b7 ' + geo.N + '\u00d7' + perDeg + '\u00b0';
+        drawCtx.font = 'bold 11px monospace';
+        const lw = drawCtx.measureText(lbl).width;
+        drawCtx.fillStyle = isDark ? 'rgba(13,40,38,0.9)' : 'rgba(240,253,250,0.95)';
+        drawCtx.fillRect(mc.cx - lw / 2 - 5, mc.cy - 20, lw + 10, 16);
+        drawCtx.strokeStyle = isDark ? '#2dd4bf66' : '#0d948866';
+        drawCtx.lineWidth = 1;
+        drawCtx.strokeRect(mc.cx - lw / 2 - 5, mc.cy - 20, lw + 10, 16);
+        drawCtx.fillStyle = isDark ? '#2dd4bf' : '#0d9488';
+        drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+        drawCtx.fillText(lbl, mc.cx, mc.cy - 12);
+        drawCtx.restore();
+      }
+    } else if (S.mouseWorld) {
+      // Резинка от старта дуги к курсору
+      const tw = S.snapToGrid ? snapPoint(S.mouseWorld) : S.mouseWorld;
+      const to = w2c(tw.x, tw.y);
+      drawCtx.strokeStyle = isDark ? '#2dd4bf55' : '#0d948855';
+      drawCtx.lineWidth = 1.5;
+      drawCtx.setLineDash([6, 4]);
+      drawCtx.beginPath();
+      drawCtx.moveTo(sc.cx, sc.cy);
+      drawCtx.lineTo(to.cx, to.cy);
+      drawCtx.stroke();
+      drawCtx.setLineDash([]);
+      const len = dist(d.startPt, tw);
+      drawCtx.fillStyle = isDark ? '#2dd4bf99' : '#0d948888';
+      drawCtx.font = '10px monospace';
+      drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
+      drawCtx.fillText(len.toFixed(1) + ' mm', (sc.cx + to.cx) / 2, (sc.cy + to.cy) / 2 - 8);
+    }
+    // Стартовая точка черновика — бирюзовое кольцо
+    drawCtx.beginPath();
+    drawCtx.arc(sc.cx, sc.cy, 9, 0, Math.PI * 2);
+    drawCtx.strokeStyle = isDark ? '#2dd4bf' : '#0d9488';
+    drawCtx.lineWidth = 2.5;
+    drawCtx.stroke();
+    drawCtx.beginPath();
+    drawCtx.arc(sc.cx, sc.cy, 3, 0, Math.PI * 2);
+    drawCtx.fillStyle = isDark ? '#2dd4bf' : '#0d9488';
+    drawCtx.fill();
   }
 
   // Резинка (rubber band)

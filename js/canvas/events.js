@@ -110,6 +110,38 @@ drawCanvas.addEventListener('mousedown', e => {
     // Клик по пустому месту — добавляем точку
     addPoint(p);
     renderAll();
+  } else if (e.button === 0 && S.toolMode === 'arc') {
+    // ══ РЕЖИМ «ДУГА» (v5.9) — радиусные гибы ══
+    // Первый клик — старт дуги (привязка к первой/последней точке цепи
+    // или свободная точка), второй клик — конец → диалог параметров
+    // (радиус, число сегментов, сторона выпуклости).
+    const w = c2w(cx, cy);
+    let p = S.snapToGrid ? snapPoint(w) : w;
+    if (!S.arcDraft) {
+      let attachIdx = null;
+      if (S.points.length > 0) {
+        let hitIdx = -1;
+        for (let i = 0; i < S.points.length; i++) {
+          const pp = w2c(S.points[i].x, S.points[i].y);
+          if (Math.sqrt((pp.cx - cx) ** 2 + (pp.cy - cy) ** 2) < 12) { hitIdx = i; break; }
+        }
+        if (hitIdx === 0) attachIdx = 0;                              // рисуем «назад» от первой
+        else if (hitIdx === S.points.length - 1) attachIdx = hitIdx;  // продолжаем от последней
+        else if (hitIdx >= 0) { drawDrawCanvas(); return; }           // внутренняя точка — нельзя
+      }
+      if (attachIdx !== null) {
+        S.arcDraft = { startPt: { x: S.points[attachIdx].x, y: S.points[attachIdx].y }, attachIdx: attachIdx };
+      } else {
+        S.arcDraft = { startPt: { x: p.x, y: p.y }, attachIdx: null };
+      }
+      drawDrawCanvas();
+    } else {
+      // Второй клик — конец дуги → диалог
+      if (Math.hypot(p.x - S.arcDraft.startPt.x, p.y - S.arcDraft.startPt.y) < 1e-6) return;
+      S.arcDraft.endPt = { x: p.x, y: p.y };
+      if (typeof showArcDialog === 'function') showArcDialog();
+      drawDrawCanvas();
+    }
   } else if (e.button === 0 && S.toolMode === 'tooldraw' && S.toolDraw) {
     // ══ РЕЖИМ РИСОВАНИЯ ИНСТРУМЕНТА (v5.7) ══
     // ЛКМ — точка контура своего пуансона/матрицы; клик по первой
@@ -380,7 +412,7 @@ drawCanvas.addEventListener('mousemove', e => {
 
   // Cursor (только если не установлен pointer выше)
   if (drawCanvas.style.cursor !== 'pointer') {
-    if (S.toolMode === 'draw' || S.toolMode === 'tooldraw') drawCanvas.style.cursor = 'crosshair';
+    if (S.toolMode === 'draw' || S.toolMode === 'tooldraw' || S.toolMode === 'arc') drawCanvas.style.cursor = 'crosshair';
     else if (S.toolMode === 'select') drawCanvas.style.cursor = (S.hoveredPt !== null || isNearPunch(cx, cy) || isNearDie(cx, cy)) ? 'grab' : 'default';
     else if (S.toolMode === 'erase') drawCanvas.style.cursor = S.hoveredPt !== null ? 'pointer' : 'default';
     else if (S.toolMode === 'measure') drawCanvas.style.cursor = 'crosshair';

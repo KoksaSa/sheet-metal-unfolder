@@ -1,9 +1,10 @@
-# Системные файлы
-.DS_Store
-Thumbs.db
+# Старые черновики
+old/
 
-# Логи
-*.log
+# Системные файлы
+Thumbs.db
+Desktop.ini
+.DS_Store
 
 # IDE
 .vscode/

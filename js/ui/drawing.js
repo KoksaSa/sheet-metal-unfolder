@@ -561,6 +561,7 @@ function generateDrawing() {
 
       // Для каждого шага на странице
       let pageHasY = false; // v5.0: был ли на странице расчёт Y из базы
+      let pageHasCollision = false; // v5.9: был ли на странице шаг с коллизией
       pageSteps.forEach((bendIdx, pageStepIdx) => {
         const stepNum = pageStartStep + pageStepIdx; // абсолютный номер шага
         const cellY = tblTop + 20 + pageStepIdx * rowH;
@@ -685,6 +686,63 @@ function generateDrawing() {
           const org = p2s(0, 0);
           sctx.fillStyle = '#f97316'; sctx.beginPath();
           sctx.arc(org.x, org.y, 3, 0, Math.PI * 2); sctx.fill();
+
+          // === v5.9: КОЛЛИЗИЯ КОНТУРА С ПУАНСОНОМ на этом шаге ===
+          // Конечное положение вершины пуансона при ВЫПОЛНЕННОМ гибе
+          // (progress=1) — самый опасный момент хода. Контур пуансона —
+          // красный пунктир в ячейке, точки касания — красные кружки,
+          // бейдж «⚠ Касание пуансона» в углу ячейки.
+          if (typeof detectPunchCollision === 'function') {
+            const finTipY = (typeof activeBendArcInnerY === 'function') ? activeBendArcInnerY(bendIdx, 1) : null;
+            const tipYv = (finTipY !== null && Number.isFinite(finTipY)) ? finTipY : (S.metal.thickness || 1) / 2;
+            const col = detectPunchCollision(stepProf.pts, tipYv);
+            if (col) {
+              pageHasCollision = true;
+              // Контур пуансона в ячейке (красный пунктир) — видно, ГДЕ касается
+              const polys = (typeof punchSolidPolygon === 'function') ? punchSolidPolygon(tipYv) : null;
+              if (polys) {
+                sctx.save();
+                sctx.strokeStyle = '#dc2626';
+                sctx.lineWidth = 1;
+                sctx.setLineDash([3, 2]);
+                polys.forEach(function (poly) {
+                  sctx.beginPath();
+                  poly.forEach(function (p, pi) {
+                    const s = p2s(p.x, p.y);
+                    if (pi === 0) sctx.moveTo(s.x, s.y); else sctx.lineTo(s.x, s.y);
+                  });
+                  sctx.closePath();
+                  sctx.stroke();
+                });
+                sctx.restore();
+              }
+              // Точки касания — красные кружки с белой обводкой
+              col.pts.forEach(function (hp) {
+                const s = p2s(hp.x, hp.y);
+                sctx.beginPath();
+                sctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2);
+                sctx.fillStyle = '#dc2626'; sctx.fill();
+                sctx.strokeStyle = '#fff'; sctx.lineWidth = 1; sctx.stroke();
+              });
+              // Бейдж в левом верхнем углу ячейки контура
+              sctx.save();
+              sctx.font = 'bold 8px sans-serif';
+              const btxt = t('punchCollisionBadge');
+              const bw = sctx.measureText(btxt).width;
+              sctx.fillStyle = 'rgba(255,255,255,0.93)';
+              sctx.fillRect(colProfX + 3, cellY + 3, bw + 8, 13);
+              sctx.strokeStyle = '#dc2626'; sctx.lineWidth = 1;
+              sctx.strokeRect(colProfX + 3, cellY + 3, bw + 8, 13);
+              sctx.fillStyle = '#dc2626';
+              sctx.textAlign = 'left'; sctx.textBaseline = 'middle';
+              sctx.fillText(btxt, colProfX + 7, cellY + 10);
+              sctx.restore();
+              // Красное кольцо вокруг номера шага — шаг с коллизией
+              sctx.beginPath();
+              sctx.arc(colStepX + colStepW / 2, cellY + 20, 12.5, 0, Math.PI * 2);
+              sctx.strokeStyle = '#dc2626'; sctx.lineWidth = 2.5; sctx.stroke();
+            }
+          }
         }
 
         // === Колонка «упор + расстояние» ===
@@ -783,6 +841,12 @@ function generateDrawing() {
         sctx.fillStyle = '#888'; sctx.font = '8px sans-serif';
         sctx.textAlign = 'center'; sctx.textBaseline = 'top';
         sctx.fillText(t('drawingSeqY') + ' — ' + t('drawingSeqYHint'), CW / 2, tblBot + 3);
+      }
+      // v5.9: легенда коллизий — на каких шагах контур касается пуансона
+      if (pageHasCollision) {
+        sctx.fillStyle = '#dc2626'; sctx.font = 'bold 9px sans-serif';
+        sctx.textAlign = 'center'; sctx.textBaseline = 'top';
+        sctx.fillText(t('punchCollisionLegend'), CW / 2, tblBot + (pageHasY ? 15 : 3));
       }
 
       seqDataUrls.push(seqCv.toDataURL('image/png'));

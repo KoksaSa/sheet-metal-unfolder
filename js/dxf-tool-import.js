@@ -283,3 +283,100 @@ function estimateDieVWidth(profile) {
   if (gap < profile.width * 0.02 || gap > profile.width * 0.95) return null;
   return gap;
 }
+// ═══════════════════════════════════════════════════════════════
+// v5.9: ЭКСПОРТ ИНСТРУМЕНТА В DXF
+// Из списков «Ваши пуансоны» / «Ваши матрицы» (диалоги своих
+// инструментов) каждый инструмент можно выгрузить в DXF (R12):
+// контур профиля — LINE-сегментами на слое OUTLINE. Для матриц без
+// профиля (стандартные V) контур генерируется из параметров V/S/H.
+// ═══════════════════════════════════════════════════════════════
+
+// Контур стандартной V-матрицы (как рисуется на холсте: ручьём вверх,
+// верхняя грань на y=0, тело вниз). vWidth — ручей, height — толщина,
+// swidth — ширина (по умолчанию 2×V).
+function _stdDiePolygon(die) {
+  const vW = die.vWidth || 10;
+  const dH = die.height || 40;
+  const sw = die.swidth || vW * 2;
+  const halfV = vW / 2, halfS = sw / 2;
+  const vDepth = dH * 0.5;
+  return [
+    { x: -halfS, y: 0 }, { x: -halfV, y: 0 }, { x: 0, y: -vDepth },
+    { x: halfV, y: 0 }, { x: halfS, y: 0 }, { x: halfS, y: -dH }, { x: -halfS, y: -dH }
+  ];
+}
+
+// DXF R12 с контуром инструмента: замкнутые цепочки профиля → LINE
+// (включая замыкающее ребро — контуры инструментов замкнуты, как
+// рисуются на холсте через closePath).
+function generateToolDXF(tool, kind) {
+  if (!tool) return null;
+  let chains = null;
+  if (tool.profile && Array.isArray(tool.profile.chains) && tool.profile.chains.length) {
+    chains = tool.profile.chains;
+  } else if (Array.isArray(tool.profile) && tool.profile.length) {
+    chains = [tool.profile];
+  } else if (kind === 'die') {
+    // Стандартная V-матрица — генерируем контур из параметров
+    chains = [_stdDiePolygon(tool)];
+  }
+  if (!chains || !chains.length) return null;
+
+  function n(v) {
+    return parseFloat(Number(v).toFixed(6)).toString();
+  }
+
+  const dxf = [];
+  // ══ HEADER ══
+  dxf.push('0', 'SECTION', '2', 'HEADER');
+  dxf.push('9', '$ACADVER', '1', 'AC1009');
+  dxf.push('9', '$INSUNITS', '70', '4');
+  dxf.push('9', '$HANDSEED', '5', 'FFFF');
+  dxf.push('0', 'ENDSEC');
+  // ══ TABLES ══
+  dxf.push('0', 'SECTION', '2', 'TABLES');
+  dxf.push('0', 'TABLE', '2', 'LTYPE', '70', '1');
+  dxf.push('0', 'LTYPE', '2', 'CONTINUOUS', '70', '0', '3', 'Solid line', '72', '65', '73', '0', '40', '0');
+  dxf.push('0', 'ENDTAB');
+  dxf.push('0', 'TABLE', '2', 'LAYER', '70', '1');
+  // Слой OUTLINE; цвет: матрица — синий (5), пуансон — красный (1)
+  dxf.push('0', 'LAYER', '2', 'OUTLINE', '70', '0', '62', kind === 'die' ? '5' : '1', '6', 'CONTINUOUS');
+  dxf.push('0', 'ENDTAB');
+  dxf.push('0', 'ENDSEC');
+  // ══ ENTITIES ══
+  dxf.push('0', 'SECTION', '2', 'ENTITIES');
+  chains.forEach(function (chain) {
+    if (!chain || chain.length < 2) return;
+    for (let i = 0; i < chain.length; i++) {
+      const a = chain[i], b = chain[(i + 1) % chain.length]; // замкнуто
+      if (!a || !b) continue;
+      if (i === chain.length - 1 && Math.hypot(a.x - b.x, a.y - b.y) < 1e-9) continue; // уже замкнут
+      dxf.push('0', 'LINE', '8', 'OUTLINE',
+        '10', n(a.x), '20', n(a.y), '30', '0',
+        '11', n(b.x), '21', n(b.y), '31', '0');
+    }
+  });
+  dxf.push('0', 'ENDSEC', '0', 'EOF');
+  return dxf.join('\n');
+}
+
+// Выгрузить свой инструмент в DXF (кнопка в списке «Ваши пуансоны»/
+// «Ваши матрицы»). kind: 'punch' | 'die'.
+function exportToolDXF(id, kind) {
+  const tools = loadCustomTools();
+  const list = (kind === 'die') ? tools.customDies : tools.customPunches;
+  const tool = list.find(function (x) { return x.id === id; });
+  if (!tool) return;
+  const dxf = generateToolDXF(tool, kind);
+  if (!dxf) {
+    toast(t('toolDxfNoGeometry'), 'error');
+    return;
+  }
+  const base = (tool.nameRu || tool.nameEn || (kind === 'die' ? 'die' : 'punch'))
+    .replace(/[\\/:*?"<>|]+/g, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 48) || (kind === 'die' ? 'die' : 'punch');
+  downloadBlob(dxf, 'application/dxf', (kind === 'die' ? 'die-' : 'punch-') + base + '.dxf');
+  toast(t('toolDxfExported'));
+}
+window.exportToolDXF = exportToolDXF;

@@ -353,8 +353,9 @@ function draw3DSimulation() {
   // Панорамирование сцены (ПКМ / пинч) — FIX: применяется к проекции
   const panX = sim3dPanX, panY = sim3dPanY;
   // Пуансон: анимированное погружение (air bending) — вершина опускается
-  // от уровня покоя (T/2 + SIM_PUNCH_LIFT) до внутренней поверхности дуги
-  // гиба (v5.0: радиус по таблице металла, касание изнутри V-складки).
+  // на SIM_PUNCH_TRAVEL (8 мм, v5.9) от позиции покоя до внутренней
+  // поверхности дуги гиба (v5.0: радиус по таблице металла, касание
+  // изнутри V-складки).
   let animInfoForPunch = null;
   if (sim3dAnimRunning && sim3dStepIdx >= 0) {
     animInfoForPunch = { animating: true, progress: sim3dAnimProgress, bendIdx: sim3dStepBends[sim3dStepIdx] };
@@ -363,6 +364,11 @@ function draw3DSimulation() {
     animInfoForPunch = { animating: true, progress: S.simAnimProgress, bendIdx: S.simAnimBendIdx };
   }
   const punchTipY = punchTipWorldY(animInfoForPunch);
+  // v5.9: коллизия контура с телом пуансона на этом шаге — корпус
+  // пуансона подсвечивается КРАСНЫМ (canvas- и WebGL-пути)
+  const sim3dPunchCollision = (prof && prof.pts && typeof detectPunchCollision === 'function')
+    ? detectPunchCollision(prof.pts, punchTipY)
+    : null;
 
   // === МАТРИЦА (серо-синяя, V-ручей сверху) ===
   // Смещение: vCenter → 0 (ось гиба в начале координат), верх → y=0.
@@ -409,10 +415,14 @@ function draw3DSimulation() {
       faces.push({ pts: vRight, z: Math.max.apply(null, vRight.map(p=>p.z)), fill: isDark?'#1f2937':'#374151', stroke: isDark?'#374151':'#1f2937' });
     }
   }
-  // === ПУАНСОН (серый, опускается при анимации) ===
+  // === ПУАНСОН (серый, опускается при анимации; v5.9: КРАСНЫЙ при коллизии) ===
   // Смещение: центр по X → 0, вершина → punchTipY (анимация погружения).
   if (punch) {
     const pOX = S.punchOffsetX||0, pOY = S.punchOffsetY||0;
+    // v5.9: цвета пуансона — красные, когда контур касается тела пуансона
+    const punFillA = sim3dPunchCollision ? (isDark ? '#dc2626' : '#ef4444') : (isDark ? '#6b7280' : '#9ca3af');
+    const punFillB = sim3dPunchCollision ? (isDark ? '#991b1b' : '#dc2626') : (isDark ? '#4b5563' : '#6b7280');
+    const punStroke = sim3dPunchCollision ? '#ef4444' : (isDark ? '#9ca3af' : '#4b5563');
     if (punch.profile && punch.profile.chains && punch.profile.chains.length > 0) {
       // Пуансон с профилем — контур как выдавленный профиль (по Z).
       // v5.4: ось гиба — через вершину профиля (tipX)
@@ -422,10 +432,10 @@ function draw3DSimulation() {
         if (!chain || chain.length < 2) return;
         const front = chain.map(p => project3DSim(p.x + offX + toolCx, p.y + offY + toolCy, -hw, panX, panY));
         const back = chain.map(p => project3DSim(p.x + offX + toolCx, p.y + offY + toolCy, hw, panX, panY));
-        faces.push({ pts: front, z: Math.max.apply(null, front.map(p=>p.z)), fill: isDark?'#6b7280':'#9ca3af', stroke:isDark?'#9ca3af':'#4b5563' });
-        faces.push({ pts: back, z: Math.max.apply(null, back.map(p=>p.z)), fill: isDark?'#4b5563':'#6b7280', stroke:isDark?'#6b7280':'#374151' });
+        faces.push({ pts: front, z: Math.max.apply(null, front.map(p=>p.z)), fill: punFillA, stroke: punStroke });
+        faces.push({ pts: back, z: Math.max.apply(null, back.map(p=>p.z)), fill: punFillB, stroke: punStroke });
         for (let i = 0; i < chain.length; i++) { const ni = (i+1)%chain.length;
-          faces.push({ pts: [front[i],front[ni],back[ni],back[i]], z: Math.max(front[i].z,front[ni].z,back[ni].z,back[i].z), fill: isDark?'#4b5563':'#6b7280', stroke:isDark?'#6b7280':'#374151' }); }
+          faces.push({ pts: [front[i],front[ni],back[ni],back[i]], z: Math.max(front[i].z,front[ni].z,back[ni].z,back[i].z), fill: punFillB, stroke: punStroke }); }
       });
     } else {
       // Стандартный пуансон — блок (низ = punchTipY, опускается при гибке)
@@ -437,12 +447,12 @@ function draw3DSimulation() {
         {x:pOX-halfS,y:pBottomY,z:hw},{x:pOX+halfS,y:pBottomY,z:hw},{x:pOX+halfS,y:pTopY,z:hw},{x:pOX-halfS,y:pTopY,z:hw}
       ];
       const pp = pCorners.map(c => project3DSim(c.x+toolCx, c.y+toolCy, c.z, panX, panY));
-      faces.push({ pts:[pp[0],pp[1],pp[2],pp[3]], z:Math.max(pp[0].z,pp[1].z,pp[2].z,pp[3].z), fill:isDark?'#6b7280':'#9ca3af', stroke:isDark?'#9ca3af':'#4b5563' });
-      faces.push({ pts:[pp[4],pp[5],pp[6],pp[7]], z:Math.max(pp[4].z,pp[5].z,pp[6].z,pp[7].z), fill:isDark?'#4b5563':'#6b7280', stroke:isDark?'#6b7280':'#374151' });
-      faces.push({ pts:[pp[0],pp[3],pp[7],pp[4]], z:Math.max(pp[0].z,pp[3].z,pp[7].z,pp[4].z), fill:isDark?'#4b5563':'#6b7280', stroke:isDark?'#6b7280':'#374151' });
-      faces.push({ pts:[pp[1],pp[2],pp[6],pp[5]], z:Math.max(pp[1].z,pp[2].z,pp[6].z,pp[5].z), fill:isDark?'#4b5563':'#6b7280', stroke:isDark?'#6b7280':'#374151' });
-      faces.push({ pts:[pp[0],pp[1],pp[5],pp[4]], z:Math.max(pp[0].z,pp[1].z,pp[5].z,pp[4].z), fill:isDark?'#374151':'#4b5563', stroke:isDark?'#6b7280':'#374151' });
-      faces.push({ pts:[pp[3],pp[2],pp[6],pp[7]], z:Math.max(pp[3].z,pp[2].z,pp[6].z,pp[7].z), fill:isDark?'#6b7280':'#9ca3af', stroke:isDark?'#9ca3af':'#4b5563' });
+      faces.push({ pts:[pp[0],pp[1],pp[2],pp[3]], z:Math.max(pp[0].z,pp[1].z,pp[2].z,pp[3].z), fill: punFillA, stroke: punStroke });
+      faces.push({ pts:[pp[4],pp[5],pp[6],pp[7]], z:Math.max(pp[4].z,pp[5].z,pp[6].z,pp[7].z), fill: punFillB, stroke: punStroke });
+      faces.push({ pts:[pp[0],pp[3],pp[7],pp[4]], z:Math.max(pp[0].z,pp[3].z,pp[7].z,pp[4].z), fill: punFillB, stroke: punStroke });
+      faces.push({ pts:[pp[1],pp[2],pp[6],pp[5]], z:Math.max(pp[1].z,pp[2].z,pp[6].z,pp[5].z), fill: punFillB, stroke: punStroke });
+      faces.push({ pts:[pp[0],pp[1],pp[5],pp[4]], z:Math.max(pp[0].z,pp[1].z,pp[5].z,pp[4].z), fill: punFillB, stroke: punStroke });
+      faces.push({ pts:[pp[3],pp[2],pp[6],pp[7]], z:Math.max(pp[3].z,pp[2].z,pp[6].z,pp[7].z), fill: punFillA, stroke: punStroke });
     }
   }
   // === УПОР — v5.2: вычисление вынесено в compute3DStopperInfo
@@ -475,7 +485,9 @@ function draw3DSimulation() {
       prof: prof, T: T, hw: hw, die: die, punch: punch,
       punchTipY: punchTipY, faceSignSim: faceSignSim,
       stopperInfo: stopperInfo, isDark: isDark,
-      usedFaceSide: usedFaceSide, usedFlipX: usedFlipX, usedFlipY: usedFlipY
+      usedFaceSide: usedFaceSide, usedFlipX: usedFlipX, usedFlipY: usedFlipY,
+      // v5.9: коллизия контура с пуансоном — красный корпус в WebGL
+      punchCollision: !!sim3dPunchCollision
     });
     if (rendered3D) {
       let stopperLabel3D = null;

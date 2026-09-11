@@ -40,24 +40,29 @@ function findDieGrooveCenter(profile) {
 
 /**
  * Анимация погружения пуансона (air bending):
- * вершина пуансона опускается от уровня покоя (SIM_PUNCH_LIFT над
- * листом) до внутренней поверхности листа по прогрессу гибки.
- * В покое (нет анимации) пуансон отведён вверх — как на реальном
- * станке после выполнения гиба.
- * v5.0: цель погружения — ВНУТРЕННЯЯ (вогнутая) ПОВЕРХНОСТЬ ДУГИ ГИБА
- * (радиус по таблице металла): пуансон заканчивает ход касанием дуги
- * изнутри V-складки, а не прокалывает её насквозь к линии гиба.
+ * v5.9: ХОД пуансона при гибке — ровно SIM_PUNCH_TRAVEL (8 мм).
+ * Позиция покоя = конечная точка касания дуги + 8 мм (в покое без
+ * активного гиба — T/2 + 8, т.е. 8 мм над верхней поверхностью листа);
+ * к концу анимации вершина опускается точно на внутреннюю (вогнутую)
+ * поверхность дуги гиба (радиус по таблице металла, v5.0).
  * Возвращает Y-координату вершины пуансона (мировая система).
  */
 function punchTipWorldY(animInfo) {
   const T = S.metal.thickness || 1;
-  const restY = T / 2 + SIM_PUNCH_LIFT;
+  // Конечная цель: внутренняя поверхность дуги активного гиба (v5.0);
+  // фолбэк — верхняя поверхность листа
+  let finalTarget = T / 2;
+  if (animInfo && animInfo.animating && typeof activeBendArcInnerY === 'function') {
+    const iy = activeBendArcInnerY(animInfo.bendIdx, 1);
+    if (iy !== null && Number.isFinite(iy)) finalTarget = iy;
+  }
+  // Покой: ровно SIM_PUNCH_TRAVEL над конечной целью, но не ниже 2 мм над листом
+  const restY = Math.max(finalTarget + SIM_PUNCH_TRAVEL, T / 2 + 2);
   if (!animInfo || !animInfo.animating) return restY;
   const p = Math.max(0, Math.min(1, animInfo.progress));
   const e = easeInOutCubic(p);
-  // Цель — внутренняя поверхность дуги активного гиба (v5.0);
-  // фолбэк (нет данных) — прежнее −T/2
-  let target = -T / 2;
+  // Текущая цель (дуга «заворачивается» по мере гибки)
+  let target = T / 2;
   if (typeof activeBendArcInnerY === 'function') {
     const iy = activeBendArcInnerY(animInfo.bendIdx, p);
     if (iy !== null && Number.isFinite(iy)) target = iy;
@@ -69,8 +74,11 @@ function punchTipWorldY(animInfo) {
 // ОТРИСОВКА МАТРИЦЫ И ПУАНСОНА (2D, под профилем в режиме симуляции)
 // Матрица: статичная, снизу (Y-), V-ручей направлен вниз от (0,0).
 // Пуансон: сверху (Y+), опускается в матрицу при гибке.
+// v5.9: collision — результат detectPunchCollision(): пуансон
+// подсвечивается КРАСНЫМ (контур касается тела пуансона на этом шаге).
 // ═══════════════════════════════════════════════════════════════
-function drawPressBrakeTooling(isDark, animInfo) {
+function drawPressBrakeTooling(isDark, animInfo, collision) {
+  const coll = !!collision;
   const die = (typeof getDieByIndex === 'function') ? getDieByIndex(S.metal.dieIndex) : null;
   const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
   if (!die && !punch) return; // нет инструментов — не рисуем
@@ -133,9 +141,10 @@ function drawPressBrakeTooling(isDark, animInfo) {
 
   // === ПУАНСОН (сверху, Y+), опускается при анимации ===
   if (punch) {
-    drawCtx.strokeStyle = isDark ? '#ef4444aa' : '#ef4444cc';
-    drawCtx.fillStyle = isDark ? '#ef444418' : '#ef444415';
-    drawCtx.lineWidth = 1.5;
+    // v5.9: при коллизии контура с пуансоном — красная подсветка
+    drawCtx.strokeStyle = coll ? '#dc2626' : (isDark ? '#ef4444aa' : '#ef4444cc');
+    drawCtx.fillStyle = coll ? (isDark ? '#ef444440' : '#ef444438') : (isDark ? '#ef444418' : '#ef444415');
+    drawCtx.lineWidth = coll ? 2.5 : 1.5;
 
     if (punch.profile && punch.profile.chains) {
       // Пуансон с реальным профилем (стандартный или DXF) + анимация погружения.
@@ -187,10 +196,28 @@ function drawPressBrakeTooling(isDark, animInfo) {
     // Подпись пуансона
     const pH = punch.height || 50;
     const pl = w2c(pOX, pH + pOY + tipY);
-    drawCtx.fillStyle = isDark ? '#f06060' : '#dc2626';
+    drawCtx.fillStyle = coll ? '#dc2626' : (isDark ? '#f06060' : '#dc2626');
     drawCtx.font = '9px sans-serif';
     drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'top';
     drawCtx.fillText((S.lang === 'en' ? punch.nameEn : punch.nameRu) || 'Punch', pl.cx, pl.cy + 3);
+
+    // v5.9: красная плашка «КАСАНИЕ ПУАНСОНА» на корпусе при коллизии
+    if (coll) {
+      drawCtx.save();
+      drawCtx.font = 'bold 10px sans-serif';
+      const ctxt = '\u26A0 ' + t('punchCollisionShort');
+      const tw = drawCtx.measureText(ctxt).width;
+      const pc = w2c(pOX, pH * 0.4 + pOY + tipY);
+      drawCtx.fillStyle = isDark ? 'rgba(50,8,8,0.92)' : 'rgba(254,226,226,0.95)';
+      drawCtx.fillRect(pc.cx - tw / 2 - 6, pc.cy - 8, tw + 12, 16);
+      drawCtx.strokeStyle = '#dc2626';
+      drawCtx.lineWidth = 1.2;
+      drawCtx.strokeRect(pc.cx - tw / 2 - 6, pc.cy - 8, tw + 12, 16);
+      drawCtx.fillStyle = '#dc2626';
+      drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
+      drawCtx.fillText(ctxt, pc.cx, pc.cy);
+      drawCtx.restore();
+    }
   } // end if (punch)
 
   // === Осевая линия ручья (пунктир) ===
@@ -575,4 +602,163 @@ function drawStopper(prof, isDark) {
   S._stopperRight = right;
   S._stopperTop = yTop;
   S._stopperBottom = yBot;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// v5.9: КОЛЛИЗИЯ КОНТУРА ЗАГОТОВКИ С ПУАНСОНОМ
+// Проверяем, попадает ли контур (машинные координаты — как нарисовано
+// в симуляции) в ТВЁРДОЕ ТЕЛО пуансона при его текущем положении
+// (вершина на высоте tipY). Используется:
+//   • живая 2D-симуляция — пуансон подсвечивается красным;
+//   • 3D-симуляция — корпус пуансона красный (canvas и three.js);
+//   • чертёж «Последовательность гибки» — пометки, на каком шаге
+//     контур касается пуансона (бейдж + красный контур инструмента).
+// ═══════════════════════════════════════════════════════════════
+
+// Твёрдое тело пуансона в мировых координатах: список замкнутых
+// полигонов (цепочки профиля — как нарисовано, либо «обелиск» для
+// упрощённой геометрии без профиля: нос-дуга + грани к корпусу).
+function punchSolidPolygon(tipY) {
+  const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
+  if (!punch) return null;
+  const pOX = S.punchOffsetX || 0;
+  const pOY = S.punchOffsetY || 0;
+  if (punch.profile && punch.profile.chains && punch.profile.chains.length) {
+    const offX = -punchProfileAxisX(punch.profile) + pOX;
+    const offY = -punch.profile.minY + pOY + tipY;
+    const polys = [];
+    punch.profile.chains.forEach(chain => {
+      if (!chain || chain.length < 3) return;
+      polys.push(chain.map(p => ({ x: p.x + offX, y: p.y + offY })));
+    });
+    return polys.length ? polys : null;
+  }
+  // Упрощённая геометрия (без профиля): нос радиусом r, вертикальный
+  // корпус шириной swidth. НЕ «прямоугольник от самого носа» — иначе
+  // ноги текущего гиба (крутые углы) дают ложные срабатывания.
+  const r = Math.max(0.2, punch.radius || 1);
+  const pH = Math.max(r * 2 + 1, punch.height || 50);
+  const halfS = Math.max(r + 0.5, (punch.swidth || 20) / 2);
+  const pts = [];
+  const NARC = 10;
+  for (let i = 0; i <= NARC; i++) {
+    const a = Math.PI + Math.PI * i / NARC; // нижняя полуокружность носа
+    pts.push({ x: pOX + r * Math.cos(a), y: tipY + r + r * Math.sin(a) });
+  }
+  pts.push({ x: pOX + halfS, y: tipY + pH });
+  pts.push({ x: pOX - halfS, y: tipY + pH });
+  return [pts];
+}
+
+// Строгое пересечение отрезков (внутри обоих, не на концах)
+function _segCross(p1, p2, p3, p4) {
+  const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-12) return null;
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+  const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+  if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
+  return { x: p1.x + d1x * t, y: p1.y + d1y * t };
+}
+
+// Точка внутри полигона (луч, чётность пересечений)
+function _ptInPoly(p, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    if (((yi > p.y) !== (yj > p.y)) && (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+// Расстояние от точки до отрезка
+function _ptSegDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const l2 = dx * dx + dy * dy;
+  if (l2 < 1e-12) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+}
+
+/**
+ * Детекция коллизии контура с телом пуансона.
+ * @param {Array} metalPts - точки контура (машинные координаты, prof.pts)
+ * @param {number} tipY - мировая Y вершины пуансона (punchTipWorldY)
+ * @returns {null|{pts:Array, count:number}} точки касания/проникновения
+ */
+function detectPunchCollision(metalPts, tipY) {
+  if (!metalPts || metalPts.length < 2) return null;
+  if (!Number.isFinite(tipY)) return null;
+  const polys = (typeof punchSolidPolygon === 'function') ? punchSolidPolygon(tipY) : null;
+  if (!polys) return null;
+  const punch = (typeof getPunchByIndex === 'function') ? getPunchByIndex(S.metal.punchIndex) : null;
+  const T = (S.metal && Number.isFinite(S.metal.thickness)) ? S.metal.thickness : 1;
+  const noseR = (punch && Number.isFinite(punch.radius) && punch.radius > 0) ? punch.radius : 1;
+  // Зона обёртывания носа: металл ЛЕГИТМНО касается носа пуансона при
+  // гибке (дуга оборачивает вершину) — касания ближе этого радиуса
+  // к вершине пуансона НЕ считаются коллизией.
+  const wrapR = Math.max(noseR, T) * 1.5 + 2.5;
+  const tipX = S.punchOffsetX || 0;
+  const inWrap = function (x, y) { return Math.hypot(x - tipX, y - tipY) < wrapR; };
+  const tol = 0.25; // допуск скользящего касания (грани пуансона, мм)
+
+  const edges = [];
+  polys.forEach(function (poly) {
+    for (let i = 0; i < poly.length; i++) edges.push([poly[i], poly[(i + 1) % poly.length]]);
+  });
+
+  const hits = [];
+  const pushHit = function (x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (inWrap(x, y)) return;
+    for (let i = 0; i < hits.length; i++) {
+      if (Math.hypot(hits[i].x - x, hits[i].y - y) < 0.8) return;
+    }
+    if (hits.length < 10) hits.push({ x: x, y: y });
+  };
+
+  // 1. Пересечение сегментов контура с рёбрами пуансона
+  for (let i = 0; i < metalPts.length - 1; i++) {
+    const A = metalPts[i], B = metalPts[i + 1];
+    for (let k = 0; k < edges.length; k++) {
+      const ip = _segCross(A, B, edges[k][0], edges[k][1]);
+      if (ip) pushHit(ip.x, ip.y);
+    }
+  }
+  // 2. Вершины контура ВНУТРИ тела пуансона (глубже допуска)
+  metalPts.forEach(function (p) {
+    for (let s = 0; s < polys.length; s++) {
+      if (_ptInPoly(p, polys[s])) {
+        let dMin = Infinity;
+        for (let k = 0; k < edges.length; k++) dMin = Math.min(dMin, _ptSegDist(p, edges[k][0], edges[k][1]));
+        if (dMin > tol) pushHit(p.x, p.y);
+        break;
+      }
+    }
+  });
+
+  return hits.length ? { pts: hits, count: hits.length } : null;
+}
+
+// Красные маркеры точек касания на контуре (живая 2D-симуляция)
+function drawPunchCollisionMarks(collision, isDark) {
+  if (!collision || !collision.pts || !collision.pts.length) return;
+  drawCtx.save();
+  collision.pts.forEach(function (hp) {
+    const c = w2c(hp.x, hp.y);
+    drawCtx.beginPath();
+    drawCtx.arc(c.cx, c.cy, 6, 0, Math.PI * 2);
+    drawCtx.fillStyle = 'rgba(220,38,38,0.30)';
+    drawCtx.fill();
+    drawCtx.beginPath();
+    drawCtx.arc(c.cx, c.cy, 3.2, 0, Math.PI * 2);
+    drawCtx.fillStyle = '#dc2626';
+    drawCtx.fill();
+    drawCtx.strokeStyle = isDark ? '#fff' : '#fff';
+    drawCtx.lineWidth = 1;
+    drawCtx.stroke();
+  });
+  drawCtx.restore();
 }

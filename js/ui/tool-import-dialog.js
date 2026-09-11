@@ -125,7 +125,11 @@ function showToolImportDialog(type, presetProfile) {
       h += '<div class="w-10 h-8 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 shrink-0 overflow-hidden">' + drawProfileSVG(tool.profile, 40, 32, isDie ? '#3b82f6' : '#ef4444', 2) + '</div>';
       h += '<div class="min-w-0"><div class="font-mono truncate">' + tool.nameRu + '</div><div class="text-[9px] text-gray-400 font-mono">' + toolSizeLabel(tool, isDie) + '</div></div>';
       h += '</div>';
-      h += '<button onclick="' + (isDie ? 'deleteCustomDie' : 'deleteCustomPunch') + '(\'' + tool.id + '\');showCustom' + (isDie ? 'Die' : 'Punch') + 'Dialog();" class="text-red-500 hover:text-red-700 px-1 text-sm leading-none">×</button>';
+      // v5.9: выгрузить DXF + удалить
+      h += '<div class="flex items-center gap-0.5 shrink-0">';
+      h += '<button onclick="exportToolDXF(\'' + tool.id + '\',\'' + (isDie ? 'die' : 'punch') + '\')" title="' + t('toolDxfExportTitle') + '" class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 px-1.5 py-1 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40" style="line-height:0"><i data-lucide="file-down" class="h-3.5 w-3.5"></i></button>';
+      h += '<button onclick="' + (isDie ? 'deleteCustomDie' : 'deleteCustomPunch') + '(\'' + tool.id + '\');showCustom' + (isDie ? 'Die' : 'Punch') + 'Dialog();" class="text-red-500 hover:text-red-700 px-1 text-sm leading-none" title="' + t('delete') + '">×</button>';
+      h += '</div>';
       h += '</div>';
     });
     h += '</div>';

@@ -524,6 +524,10 @@ function renderThree3DSim(opts) {
       three3D.punchGroup.position.set(pOX, pOY + punchTipY, -hw);
     }
   }
+  // v5.9: коллизия контура с пуансоном — корпус КРАСНЫЙ (иначе штатный серый)
+  if (three3D.mats && three3D.mats.punch) {
+    three3D.mats.punch.color.setHex(opts.punchCollision ? 0xdc2626 : 0x6d7681);
+  }
   // позиция упора
   if (three3D.stopperMesh && stopperInfo) {
     three3D.stopperMesh.position.set(stopperInfo.centerX, 0, 0);

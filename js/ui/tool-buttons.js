@@ -9,6 +9,7 @@ function renderToolButtons() {
   if (!c) return;
   const tools = [
     { mode: 'draw', icon: 'pencil', key: 'D', label: 'draw' },
+    { mode: 'arc', icon: 'spline', key: 'A', label: 'arcTool', hintKey: 'arcToolHint' },
     { mode: 'select', icon: 'mouse-pointer-2', key: 'V', label: 'select' },
     { mode: 'erase', icon: 'eraser', key: 'E', label: 'erase' },
     { mode: 'measure', icon: 'ruler', key: 'M', label: 'measure' },
@@ -20,9 +21,11 @@ function renderToolButtons() {
   const btnInactive = 'border-gray-200 dark:border-gray-700 hover:bg-green-50 hover:text-green-700 dark:hover:bg-green-950/30';
   c.innerHTML = tools.map(tl => {
     const active = S.toolMode === tl.mode;
+    // v5.9: подсказка для инструментов с расширенным описанием («Дуга»)
+    const hintAttr = tl.hintKey ? ' title="' + t(tl.hintKey) + '"' : '';
     // v5.7: смена режима через setToolMode — сбрасывает черновик
     // рисуемого инструмента при выходе из режима рисования инструмента
-    return '<button onclick="setToolMode(\'' + tl.mode + '\')" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"><i data-lucide="' + tl.icon + '" class="h-5 w-5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
+    return '<button onclick="setToolMode(\'' + tl.mode + '\')" class="' + btnBase + ' ' + (active ? btnActive : btnInactive) + '"' + hintAttr + '><i data-lucide="' + tl.icon + '" class="h-5 w-5 shrink-0"></i><span class="truncate">' + t(tl.label) + '</span></button>';
   }).join('');
 
   // Кнопка-тумблер «Симуляция гибки» (включает режим симуляции).

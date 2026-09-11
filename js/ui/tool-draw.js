@@ -27,6 +27,10 @@ function setToolMode(mode) {
   if (S.toolMode === 'tooldraw' && mode !== 'tooldraw') {
     S.toolDraw = null;
   }
+  // v5.9: выход из режима «Дуга» — сброс черновика радиусной дуги
+  if (S.toolMode === 'arc' && mode !== 'arc') {
+    S.arcDraft = null;
+  }
   S.toolMode = mode;
   S.drawFromIdx = null;
   renderAll();

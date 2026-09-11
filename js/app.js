@@ -28,6 +28,13 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Backspace') { e.preventDefault(); undoToolDrawPoint(); return; }
   }
 
+  // v5.9: диалог радиусной дуги — Enter применить, Escape отмена
+  if (S.arcDraft && S.arcDraft.endPt && document.getElementById('dialog-overlay') && !document.getElementById('dialog-overlay').classList.contains('hidden')) {
+    if (e.key === 'Enter') { e.preventDefault(); applyArcDraft(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); cancelArcDraft(); return; }
+    return; // остальные хоткеи не обрабатываем, пока открыт диалог дуги
+  }
+
   // Undo / Redo работают и в полях ввода (как в браузере), и вне их
   if (mod && e.code === 'KeyZ') {
     e.preventDefault();
@@ -68,6 +75,7 @@ document.addEventListener('keydown', e => {
     // v5.7: смена режима через setToolMode — сбрасывает черновик
     // инструмента при выходе из рисования инструмента
     case 'd': setToolMode('draw'); break;
+    case 'a': setToolMode('arc'); break; // v5.9: инструмент «Дуга»
     case 'v': setToolMode('select'); break;
     case 'e': setToolMode('erase'); break;
     case 'h': setToolMode('hem'); break;
@@ -108,6 +116,13 @@ document.addEventListener('keydown', e => {
       if (S.toolMode === 'tooldraw' && S.toolDraw) {
         e.preventDefault();
         cancelToolDraw();
+        break;
+      }
+      // v5.9: Esc в режиме «Дуга» — отмена черновика дуги
+      if (S.toolMode === 'arc' && S.arcDraft) {
+        e.preventDefault();
+        S.arcDraft = null;
+        drawDrawCanvas();
         break;
       }
       // Сброс предпросмотра гиба

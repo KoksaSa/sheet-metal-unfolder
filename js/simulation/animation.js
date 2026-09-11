@@ -85,11 +85,6 @@ function startBendAnimation(bendIdx, onDone) {
     // При смене профиля (очистка/перерисовка) следующий вход в «Симуляцию»
     // обнаружит расхождение и начнёт с плоского листа.
     if (typeof simProfileSignature === 'function') S.simProfileSig = simProfileSignature();
-    // v5.9: предупреждение — контур профиля касается контура пуансона
-    // (проверяются положения пуансона в конце хода и в покое).
-    if (typeof checkPunchProfileContact === 'function') {
-      try { checkPunchProfileContact(bendIdx); } catch (e) { /* не критично */ }
-    }
     if (typeof updateSimButton === 'function') updateSimButton();
     if (onDone) onDone();
   };
