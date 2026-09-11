@@ -111,10 +111,11 @@ drawCanvas.addEventListener('mousedown', e => {
     addPoint(p);
     renderAll();
   } else if (e.button === 0 && S.toolMode === 'arc') {
-    // ══ РЕЖИМ «ДУГА» (v5.9) — радиусные гибы ══
-    // Первый клик — старт дуги (привязка к первой/последней точке цепи
-    // или свободная точка), второй клик — конец → диалог параметров
-    // (радиус, число сегментов, сторона выпуклости).
+    // ══ РЕЖИМ «ДУГА» (v5.9, CAD-стиль: 3 клика) ══
+    // 1-й клик — старт дуги (привязка к первой/последней точке цепи
+    // или свободная точка), 2-й — конец, 3-й — точка НА ДУГЕ → диалог
+    // числа сегментов. После 2-го клика живой предпросмотр дуги
+    // следует за курсором (курсор = точка на дуге).
     const w = c2w(cx, cy);
     let p = S.snapToGrid ? snapPoint(w) : w;
     if (!S.arcDraft) {
@@ -135,11 +136,17 @@ drawCanvas.addEventListener('mousedown', e => {
         S.arcDraft = { startPt: { x: p.x, y: p.y }, attachIdx: null };
       }
       drawDrawCanvas();
-    } else {
-      // Второй клик — конец дуги → диалог
+    } else if (!S.arcDraft.endPt) {
+      // Второй клик — конец дуги (дальше ждём точку на дуге)
       if (Math.hypot(p.x - S.arcDraft.startPt.x, p.y - S.arcDraft.startPt.y) < 1e-6) return;
       S.arcDraft.endPt = { x: p.x, y: p.y };
-      if (typeof showArcDialog === 'function') showArcDialog();
+      drawDrawCanvas();
+    } else {
+      // Третий клик — точка НА дуге → диалог числа сегментов
+      if (Math.hypot(p.x - S.arcDraft.startPt.x, p.y - S.arcDraft.startPt.y) < 1e-6 ||
+          Math.hypot(p.x - S.arcDraft.endPt.x, p.y - S.arcDraft.endPt.y) < 1e-6) return;
+      S.arcDraft.midPt = { x: p.x, y: p.y };
+      if (typeof showArcSegDialog === 'function') showArcSegDialog();
       drawDrawCanvas();
     }
   } else if (e.button === 0 && S.toolMode === 'tooldraw' && S.toolDraw) {

@@ -579,16 +579,35 @@ function drawDrawCanvas() {
     drawCtx.stroke();
   }
 
-  // ══ v5.9: ЧЕРНОВИК РАДИУСНОЙ ДУГИ (режим «Дуга») ══
-  // Есть конец — сегментированная дуга с подписью (живой предпросмотр
-  // из диалога: радиус/сегменты/сторона); нет конца — резинка от старта.
+  // ══ v5.9: ЧЕРНОВИК РАДИУСНОЙ ДУГИ (режим «Дуга», CAD-стиль) ══
+  // Стадия 1 (только старт) — резинка к курсору.
+  // Стадия 2 (старт + конец) — живой предпросмотр: курсор = точка НА
+  // дуге, дуга через 3 точки перестраивается в реальном времени;
+  // маркеры трёх точек, подпись R/охват/сегменты. 3-й клик открывает
+  // диалог числа сегментов.
   if (S.toolMode === 'arc' && S.arcDraft && !drawDrawCanvasSimDone) {
     const d = S.arcDraft;
     const sc = w2c(d.startPt.x, d.startPt.y);
-    if (d.endPt && typeof arcDraftGeometry === 'function') {
-      const geo = arcDraftGeometry(d);
+    if (d.endPt) {
+      const ec = w2c(d.endPt.x, d.endPt.y);
+      // Промежуточная точка: зафиксированная (после 3-го клика) или курсор
+      const midW = d.midPt ||
+        (S.mouseWorld ? (S.snapToGrid ? snapPoint(S.mouseWorld) : S.mouseWorld) : null);
+      const geo = (midW && typeof arcThrough3PointsGeometry === 'function')
+        ? arcThrough3PointsGeometry({ startPt: d.startPt, endPt: d.endPt, midPt: midW, segCount: d.segCount })
+        : null;
+      drawCtx.save();
       if (geo && geo.pts) {
-        drawCtx.save();
+        const cc = w2c(geo.cx, geo.cy);
+        // Радиусные линии центр→старт и центр→конец (тонкий пунктир)
+        drawCtx.strokeStyle = isDark ? '#2dd4bf55' : '#0d948855';
+        drawCtx.lineWidth = 1;
+        drawCtx.setLineDash([4, 4]);
+        drawCtx.beginPath();
+        drawCtx.moveTo(cc.cx, cc.cy); drawCtx.lineTo(sc.cx, sc.cy);
+        drawCtx.moveTo(cc.cx, cc.cy); drawCtx.lineTo(ec.cx, ec.cy);
+        drawCtx.stroke();
+        drawCtx.setLineDash([]);
         // Сегментированная дуга — бирюзовый пунктир по хордам
         drawCtx.strokeStyle = isDark ? '#2dd4bf' : '#0d9488';
         drawCtx.lineWidth = 2;
@@ -610,6 +629,13 @@ function drawDrawCanvas() {
           drawCtx.fillStyle = isDark ? '#2dd4bf' : '#0d9488';
           drawCtx.fill();
         });
+        // Промежуточная точка (3-я точка CAD-метода) — на самой дуге
+        const mc3 = w2c(midW.x, midW.y);
+        drawCtx.beginPath();
+        drawCtx.arc(mc3.cx, mc3.cy, 4.5, 0, Math.PI * 2);
+        drawCtx.strokeStyle = isDark ? '#2dd4bf' : '#0d9488';
+        drawCtx.lineWidth = 2;
+        drawCtx.stroke();
         // Подпись: R, охват, угол сегмента
         const midPt = geo.pts[Math.floor(geo.pts.length / 2)];
         const mc = w2c(midPt.x, midPt.y);
@@ -626,10 +652,40 @@ function drawDrawCanvas() {
         drawCtx.fillStyle = isDark ? '#2dd4bf' : '#0d9488';
         drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'middle';
         drawCtx.fillText(lbl, mc.cx, mc.cy - 12);
-        drawCtx.restore();
+      } else {
+        // Точки на одной прямой — хорда красным пунктиром
+        drawCtx.strokeStyle = isDark ? '#ef444488' : '#dc262688';
+        drawCtx.lineWidth = 1.5;
+        drawCtx.setLineDash([6, 4]);
+        drawCtx.beginPath();
+        drawCtx.moveTo(sc.cx, sc.cy);
+        drawCtx.lineTo(ec.cx, ec.cy);
+        drawCtx.stroke();
+        drawCtx.setLineDash([]);
       }
+      // Маркеры старта и конца черновика
+      [sc, ec].forEach(function (pc) {
+        drawCtx.beginPath();
+        drawCtx.arc(pc.cx, pc.cy, 7, 0, Math.PI * 2);
+        drawCtx.strokeStyle = isDark ? '#2dd4bf' : '#0d9488';
+        drawCtx.lineWidth = 2;
+        drawCtx.stroke();
+        drawCtx.beginPath();
+        drawCtx.arc(pc.cx, pc.cy, 2.5, 0, Math.PI * 2);
+        drawCtx.fillStyle = isDark ? '#2dd4bf' : '#0d9488';
+        drawCtx.fill();
+      });
+      // Подсказка возле курсора (пока точка на дуге не зафиксирована)
+      if (!d.midPt && S.mouseWorld && typeof t === 'function') {
+        const hc = w2c(midW ? midW.x : S.mouseWorld.x, midW ? midW.y : S.mouseWorld.y);
+        drawCtx.font = '10px monospace';
+        drawCtx.textAlign = 'left'; drawCtx.textBaseline = 'top';
+        drawCtx.fillStyle = isDark ? '#2dd4bf99' : '#0d948888';
+        drawCtx.fillText(t('arcHintMid'), hc.cx + 12, hc.cy + 10);
+      }
+      drawCtx.restore();
     } else if (S.mouseWorld) {
-      // Резинка от старта дуги к курсору
+      // Стадия 1: резинка от старта дуги к курсору
       const tw = S.snapToGrid ? snapPoint(S.mouseWorld) : S.mouseWorld;
       const to = w2c(tw.x, tw.y);
       drawCtx.strokeStyle = isDark ? '#2dd4bf55' : '#0d948855';
@@ -645,6 +701,11 @@ function drawDrawCanvas() {
       drawCtx.font = '10px monospace';
       drawCtx.textAlign = 'center'; drawCtx.textBaseline = 'bottom';
       drawCtx.fillText(len.toFixed(1) + ' mm', (sc.cx + to.cx) / 2, (sc.cy + to.cy) / 2 - 8);
+      // Подсказка «2-й клик — конец дуги»
+      if (typeof t === 'function') {
+        drawCtx.textAlign = 'left'; drawCtx.textBaseline = 'top';
+        drawCtx.fillText(t('arcHintEnd'), to.cx + 12, to.cy + 10);
+      }
     }
     // Стартовая точка черновика — бирюзовое кольцо
     drawCtx.beginPath();

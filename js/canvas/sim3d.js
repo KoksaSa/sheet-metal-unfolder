@@ -274,7 +274,10 @@ function draw3DSimulation() {
     // анимируется. Раньше после завершения анимации согнутый гиб
     // НЕ входил в simBentMarkers → профиль «прыгал» обратно в плоский.
     // Теперь в покое показываем состояние ПОСЛЕ шага N: 0..N согнуты.
-    const appliedCount = sim3dAnimRunning ? sim3dStepIdx : sim3dStepIdx + 1;
+    // v5.9: фаза 'preview' — гиб N ещё НЕ согнут (1-й клик по шагу:
+    // заготовка позиционирована у упора, видно расстояние до упора).
+    const appliedCount = sim3dAnimRunning ? sim3dStepIdx
+      : (sim3dStepPhase === 'preview' ? sim3dStepIdx : sim3dStepIdx + 1);
     S.simBentMarkers = sim3dStepBends.slice(0, Math.min(appliedCount, sim3dStepBends.length));
     S.selectedBendIndex = sim3dStepBends[sim3dStepIdx] !== undefined ? sim3dStepBends[sim3dStepIdx] : undefined;
     const stepBendIdx = sim3dStepBends[sim3dStepIdx];
@@ -298,6 +301,11 @@ function draw3DSimulation() {
     if (animInfo3d) {
       animInfo3d._is3d = true; // flipY уже применён между гибами
       prof = computeAccumulatedProfile(animInfo3d);
+    } else if (sim3dStepPhase === 'preview' && stepBendIdx !== undefined) {
+      // v5.9: предпросмотр шага — позиция у упора ДО гибки (как в 2D
+      // при выборе гиба): анкер по гибу шага, сам гиб не согнут,
+      // предыдущие 0..N-1 согнуты. Пуансон в покое (не опускается).
+      prof = computeAccumulatedProfile({ bendIdx: stepBendIdx, progress: 0, animating: false, _is3d: true });
     } else {
       // Нет анимации — пустой animInfo с меткой _is3d
       prof = computeAccumulatedProfile({ _is3d: true });
@@ -612,6 +620,25 @@ function draw3DSimOverlay(ctx, stopperLabelInfo, usedFaceSide, usedFlipX, usedFl
     ctx.fillText(stopperLabelInfo.text, stopperLabelInfo.x, stopperLabelInfo.y - 2);
     ctx.restore();
   }
+  // v5.9: бейдж фазы 'preview' — подсказка, что заготовка стоит у упора
+  // (расстояние показано) и повторный клик по шагу выполнит гибку
+  if (sim3dStepIdx >= 0 && sim3dStepIdx < sim3dStepBends.length &&
+      sim3dStepPhase === 'preview' && !sim3dAnimRunning && typeof t === 'function') {
+    ctx.save();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const txt = t('sim3dPhasePreview');
+    const tw2 = ctx.measureText(txt).width;
+    const bx = 10, by = 26;
+    ctx.fillStyle = 'rgba(13,148,136,0.92)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(bx, by, tw2 + 16, 20, 5); else ctx.rect(bx, by, tw2 + 16, 20);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(txt, bx + 8, by + 4);
+    ctx.restore();
+  }
   // v4.8: HUD ОРИЕНТАЦИИ ЗАГОТОВКИ (правый верхний угол) — лицевая сторона
   // + развороты ↔/↕ текущего шага. Геометрия заготовки физически
   // переворачивается между шагами, но раньше это никак не подписывалось
@@ -661,12 +688,15 @@ function draw3DSimOverlay(ctx, stopperLabelInfo, usedFaceSide, usedFlipX, usedFl
   const btnsX0 = Math.max(10, (sim3dW - btnsTotalW) / 2);
   const btnsY = sim3dH - btnH - 8;
   function drawStepBtn(x, y, w, h, label, isActive, stepIdx) {
-    ctx.fillStyle = isActive ? '#7c3aed' : (isDark ? '#374151' : '#e5e7eb');
-    ctx.strokeStyle = isActive ? '#a855f7' : (isDark ? '#4b5563' : '#9ca3af');
+    // v5.9: фаза 'preview' текущего шага — бирюзовая кнопка (позиция
+    // у упора показана, гибка ещё не выполнялась); 'bent'/анимация — фиолетовая
+    const isPreview = isActive && stepIdx === sim3dStepIdx && sim3dStepPhase === 'preview' && !sim3dAnimRunning;
+    ctx.fillStyle = isPreview ? '#0d9488' : (isActive ? '#7c3aed' : (isDark ? '#374151' : '#e5e7eb'));
+    ctx.strokeStyle = isPreview ? '#2dd4bf' : (isActive ? '#a855f7' : (isDark ? '#4b5563' : '#9ca3af'));
     ctx.lineWidth = 1.5; ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(x, y, w, h, 4); else ctx.rect(x, y, w, h);
     ctx.fill(); ctx.stroke();
-    ctx.fillStyle = isActive ? '#fff' : (isDark ? '#d1d5db' : '#374151');
+    ctx.fillStyle = (isActive || isPreview) ? '#fff' : (isDark ? '#d1d5db' : '#374151');
     ctx.font = 'bold ' + (w < 48 ? 9 : 11) + 'px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(label, x+w/2, y+h/2);
     sim3dStepBtnRects.push({x, y, w, h, step: stepIdx});
@@ -712,9 +742,17 @@ function sim3dRenderView() {
 
 // ==================== АНИМАЦИЯ ШАГОВ ====================
 let sim3dStepBends = [], sim3dStepIdx = -1, sim3dAnimProgress = 0, sim3dAnimRunning = false, sim3dAnimStartT = 0, sim3dAnimRAF = null;
+// v5.9: фаза текущего шага — цикл как в 2D-симуляции:
+// 'preview' — заготовка позиционирована у упора, расстояние показано,
+//             гибка НЕ выполняется (1-й клик по шагу);
+// 'bent'    — гиб шага согнут (после анимации гибки).
+// Повторный клик по шагу: preview → гибка, bent → разгибание.
+let sim3dStepPhase = 'bent';
+// Направление анимации шага: +1 гибка, −1 разгибание
+let sim3dAnimDir = 1;
 let sim3dStepBtnRects = [];
 let sim3dPanX = 0, sim3dPanY = 0, isPanning3DSim = false, sim3dPanStart = null;
-let sim3dFullSimRunning = false, sim3dFullSimStep = 0;
+let sim3dFullSimRunning = false, sim3dFullSimStep = 0, sim3dFullSimTimer = null;
 // v4.4: подпись профиля, на которой построены шаги 3D (сверяется при
 // открытии модалки и при каждой отрисовке — смена профиля ⇒ сброс шагов)
 let sim3dProfileSig = null;
@@ -726,8 +764,10 @@ function sim3dResetForNewProfile() {
   sim3dStepIdx = -1;
   sim3dAnimProgress = 0;
   sim3dAnimRunning = false;
+  sim3dStepPhase = 'bent';
   sim3dFullSimRunning = false;
   sim3dFullSimStep = 0;
+  if (sim3dFullSimTimer) { clearTimeout(sim3dFullSimTimer); sim3dFullSimTimer = null; }
   if (sim3dAnimRAF) cancelAnimationFrame(sim3dAnimRAF);
   sim3dAnimRAF = null;
 }
@@ -751,21 +791,61 @@ function sim3dSetView(view) {
 function sim3dStartStepAnim(stepIdx) {
   if (stepIdx < 0 || stepIdx >= sim3dStepBends.length) return;
   sim3dStepIdx = stepIdx; sim3dAnimProgress = 0; sim3dAnimRunning = true; sim3dAnimStartT = performance.now();
+  sim3dAnimDir = 1;          // гибка
+  sim3dStepPhase = 'bent';   // после анимации — гиб согнут
   if (sim3dAnimRAF) cancelAnimationFrame(sim3dAnimRAF);
   // НЕ модифицируем глобальные S.simFlipX/simFlipY здесь — draw3DSimulation
   // временно ставит их и восстанавливает после отрисовки.
   sim3dAnimTick();
 }
+
+// v5.9: разгибание текущего шага (3-й клик по кнопке шага — как в 2D).
+// Анимация прогресса 1 → 0, по завершении — фаза 'preview'
+// (заготовка снова у упора, видно расстояние до упора).
+function sim3dStartUnbendAnim() {
+  if (sim3dStepIdx < 0 || sim3dStepIdx >= sim3dStepBends.length) return;
+  sim3dAnimDir = -1;         // разгибание
+  sim3dAnimProgress = 1;
+  sim3dAnimRunning = true;
+  sim3dAnimStartT = performance.now();
+  if (sim3dAnimRAF) cancelAnimationFrame(sim3dAnimRAF);
+  sim3dAnimTick();
+}
+
+// v5.9: клик по кнопке шага — трёхстадийный цикл как в 2D-симуляции:
+// 1-й клик — предпросмотр позиции у упора (расстояние до упора, без гибки);
+// 2-й клик (или клик по уже выбранному шагу в фазе preview) — гибка;
+// 3-й клик по согнутому шагу — разгибание обратно в предпросмотр.
+function sim3dStepClick(stepIdx) {
+  sim3dStopAnim();
+  sim3dFullSimRunning = false;
+  if (sim3dFullSimTimer) { clearTimeout(sim3dFullSimTimer); sim3dFullSimTimer = null; }
+  if (sim3dStepIdx === stepIdx && sim3dStepBends.length > 0) {
+    // Повторный клик по ТЕКУЩЕМУ шагу: bent → разогнуть, preview → согнуть
+    if (sim3dStepPhase === 'bent') { sim3dStartUnbendAnim(); return; }
+    sim3dStartStepAnim(stepIdx);
+    return;
+  }
+  // Первый клик по шагу — предпросмотр позиции у упора (без гибки)
+  sim3dStepIdx = stepIdx;
+  sim3dStepPhase = 'preview';
+  sim3dAnimProgress = 0;
+  draw3DSimulation();
+}
+
 function sim3dAnimTick() {
   if (!sim3dAnimRunning) return;
   const elapsed = performance.now() - sim3dAnimStartT;
   // Длительность шага 1800мс — комфортный темп
-  sim3dAnimProgress = Math.max(0, Math.min(1, elapsed / 1800));
+  const raw = Math.max(0, Math.min(1, elapsed / 1800));
+  sim3dAnimProgress = (sim3dAnimDir === -1) ? (1 - raw) : raw;
   draw3DSimulation();
-  if (sim3dAnimProgress >= 1) {
-    // Шаг завершён: фиксируем состояние ПОСЛЕ шага (гиб входит в набор)
+  if (raw >= 1) {
+    // Шаг завершён: гибка → состояние ПОСЛЕ шага (фаза 'bent'),
+    // разгибание → возврат в предпросмотр (фаза 'preview')
     sim3dAnimRunning = false;
     sim3dAnimProgress = 0;
+    if (sim3dAnimDir === -1) sim3dStepPhase = 'preview';
     draw3DSimulation();
   }
   else sim3dAnimRAF = requestAnimationFrame(sim3dAnimTick);
@@ -774,14 +854,27 @@ function sim3dStopAnim() { sim3dAnimRunning = false; if (sim3dAnimRAF) cancelAni
 function sim3dStartFullSim() {
   if (sim3dStepBends.length === 0) return;
   sim3dFullSimRunning = true; sim3dFullSimStep = 0; sim3dStepIdx = -1;
+  if (sim3dFullSimTimer) { clearTimeout(sim3dFullSimTimer); sim3dFullSimTimer = null; }
   sim3dFullSimNextStep();
 }
 function sim3dFullSimNextStep() {
   if (!sim3dFullSimRunning) return;
-  if (sim3dFullSimStep >= sim3dStepBends.length) { sim3dFullSimRunning = false; sim3dStepIdx = sim3dStepBends.length; draw3DSimulation(); return; }
-  sim3dStartStepAnim(sim3dFullSimStep);
-  // Пауза между шагами: анимация 1800мс + пауза 700мс ≈ 2.5с на шаг
-  setTimeout(function() { sim3dFullSimStep++; sim3dFullSimNextStep(); }, 1800 + 700);
+  if (sim3dFullSimStep >= sim3dStepBends.length) { sim3dFullSimRunning = false; sim3dStepIdx = sim3dStepBends.length; sim3dStepPhase = 'bent'; draw3DSimulation(); return; }
+  const step = sim3dFullSimStep;
+  // v5.9: стадия 1 — предпросмотр позиции у упора (расстояние, без гибки)
+  sim3dStepIdx = step; sim3dStepPhase = 'preview'; sim3dAnimProgress = 0;
+  draw3DSimulation();
+  // стадия 2 — через паузу гибка (1800мс) + пауза 700мс ≈ 3.4с на шаг
+  sim3dFullSimTimer = setTimeout(function () {
+    sim3dFullSimTimer = null;
+    if (!sim3dFullSimRunning) return;
+    sim3dStartStepAnim(step);
+    sim3dFullSimTimer = setTimeout(function () {
+      sim3dFullSimTimer = null;
+      sim3dFullSimStep++;
+      sim3dFullSimNextStep();
+    }, 1800 + 700);
+  }, 900);
 }
 
 // ==================== СОБЫТИЯ 3D-СИМУЛЯЦИИ ====================
@@ -797,10 +890,10 @@ function setup3DSimEvents() {
       for (const btn of sim3dStepBtnRects) {
         if (mx >= btn.x && mx <= btn.x+btn.w && my >= btn.y && my <= btn.y+btn.h) {
           sim3dStopAnim(); sim3dFullSimRunning = false;
-          if (btn.step === -2) { sim3dStepIdx = -1; sim3dStepBends = []; draw3DSimulation(); }
+          if (btn.step === -2) { sim3dStepIdx = -1; sim3dStepPhase = 'bent'; sim3dStepBends = []; draw3DSimulation(); }
           else if (btn.step === -3) sim3dStartFullSim();
-          else if (btn.step === -1) { sim3dStepIdx = -1; sim3dStopAnim(); draw3DSimulation(); }
-          else sim3dStartStepAnim(btn.step);
+          else if (btn.step === -1) { sim3dStepIdx = -1; sim3dStepPhase = 'bent'; sim3dStopAnim(); draw3DSimulation(); }
+          else sim3dStepClick(btn.step);
           return;
         }
       }
@@ -827,10 +920,10 @@ function setup3DSimEvents() {
         for (const btn of sim3dStepBtnRects) {
           if (mx >= btn.x && mx <= btn.x+btn.w && my >= btn.y && my <= btn.y+btn.h) {
             sim3dStopAnim(); sim3dFullSimRunning = false;
-            if (btn.step === -2) { sim3dStepIdx = -1; sim3dStepBends = []; draw3DSimulation(); }
+            if (btn.step === -2) { sim3dStepIdx = -1; sim3dStepPhase = 'bent'; sim3dStepBends = []; draw3DSimulation(); }
             else if (btn.step === -3) sim3dStartFullSim();
-            else if (btn.step === -1) { sim3dStepIdx = -1; sim3dStopAnim(); draw3DSimulation(); }
-            else sim3dStartStepAnim(btn.step);
+            else if (btn.step === -1) { sim3dStepIdx = -1; sim3dStepPhase = 'bent'; sim3dStopAnim(); draw3DSimulation(); }
+            else sim3dStepClick(btn.step);
             return;
           }
         }
