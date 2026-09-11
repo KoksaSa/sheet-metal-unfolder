@@ -1,6 +1,6 @@
 # Авто-деплой на GitHub Pages при каждом push в main.
 # Перед первым запуском включите: Settings → Pages → Source: GitHub Actions.
-# Сайт целиком статический и лежит в корне репозитория — сборка не нужна.
+# Сборка: Vite минифицирует HTML/CSS/JS и складывает результат в dist/.
 name: Deploy to GitHub Pages
 
 on:
@@ -23,14 +23,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # весь корень репозитория и есть статический сайт
-          path: '.'
+          path: 'dist'
 
       - name: Deploy to GitHub Pages
         id: deployment

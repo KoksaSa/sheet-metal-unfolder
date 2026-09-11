@@ -9,3 +9,7 @@ Desktop.ini
 # IDE
 .vscode/
 .idea/
+
+# Node / сборка
+node_modules/
+dist/
